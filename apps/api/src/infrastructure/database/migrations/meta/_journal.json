@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1742342400000,
+      "tag": "0001_users_nutritionists",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1742342401000,
+      "tag": "0002_patients",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1742342402000,
+      "tag": "0003_diet_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1742342403000,
+      "tag": "0004_foods_embeddings",
+      "breakpoints": true
+    }
+  ]
+}
