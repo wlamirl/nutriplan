@@ -12,3 +12,6 @@
 
   # 5. Dev
   pnpm dev
+
+  # kill process
+  lsof -ti :3000 | xargs kill -9 && echo "Processo encerrado"
