@@ -1,5 +1,5 @@
 import { Patient } from '../entities/Patient';
-import { Food } from '../entities/Food';
+import { Food, FoodSource } from '../entities/Food';
 import { DietPlan } from '../entities/DietPlan';
 
 // ─── IPatientRepository ──────────────────────────────────────────────────────
@@ -27,12 +27,45 @@ export interface FoodSearchOptions {
   categories?: string[];
 }
 
+export interface UpsertFoodResult {
+  food: Food;
+  /** true = novo registro inserido, false = registro existente atualizado */
+  created: boolean;
+}
+
 export interface IFoodRepository {
   /** Semantic similarity search using pgvector cosine distance */
   searchBySimilarity(options: FoodSearchOptions): Promise<Food[]>;
   findById(id: string): Promise<Food | null>;
   findByName(name: string): Promise<Food[]>;
-  upsert(food: Food): Promise<Food>;
+  upsert(food: Food): Promise<UpsertFoodResult>;
+  findAll(options?: { limit?: number; offset?: number }): Promise<Food[]>;
+  findWithoutEmbeddings(limit?: number): Promise<Food[]>;
+  saveEmbedding(foodId: string, embedding: number[]): Promise<void>;
+  countAll(): Promise<number>;
+}
+
+// ─── ISyncLogRepository ──────────────────────────────────────────────────────
+
+export interface SyncLogEntry {
+  id: string;
+  source: FoodSource;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  totalProcessed: number;
+  totalInserted: number;
+  totalUpdated: number;
+  totalFailed: number;
+  errorMessage?: string;
+  startedAt: Date;
+  finishedAt?: Date;
+  createdAt: Date;
+}
+
+export interface ISyncLogRepository {
+  create(source: FoodSource): Promise<SyncLogEntry>;
+  update(id: string, data: Partial<Omit<SyncLogEntry, 'id' | 'source' | 'createdAt' | 'startedAt'>>): Promise<SyncLogEntry>;
+  findAll(source?: FoodSource): Promise<SyncLogEntry[]>;
+  findById(id: string): Promise<SyncLogEntry | null>;
 }
 
 // ─── IDietPlanRepository ─────────────────────────────────────────────────────

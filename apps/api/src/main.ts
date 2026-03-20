@@ -6,7 +6,9 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import { errorHandler } from './http/middlewares/errorHandler';
-import { authRoutes } from './http/routes/auth.routes';
+import { authRoutes }  from './http/routes/auth.routes';
+import { foodRoutes }  from './http/routes/food.routes';
+import { startFoodSyncWorker } from './jobs/food-sync.worker';
 
 const app = Fastify({
   logger: {
@@ -35,11 +37,15 @@ async function bootstrap(): Promise<void> {
 
   // ─── Routes ────────────────────────────────────────────────────────────────
   await app.register(authRoutes, { prefix: '/auth' });
+  await app.register(foodRoutes, { prefix: '/foods' });
   // Registradas nas próximas fases:
   // await app.register(patientRoutes,   { prefix: '/patients' });
   // await app.register(dietPlanRoutes,  { prefix: '/diet-plans' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+
+  // ─── Background workers ────────────────────────────────────────────────────
+  startFoodSyncWorker();
 
   // ─── Start ─────────────────────────────────────────────────────────────────
   const port = Number(process.env.PORT ?? 3000);

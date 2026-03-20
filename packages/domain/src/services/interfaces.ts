@@ -1,3 +1,15 @@
+import { DietPlan, MacroTargets, MealType } from '../entities/DietPlan';
+import { Food, FoodSource } from '../entities/Food';
+import { Patient } from '../entities/Patient';
+
+// ─── IFoodSyncAdapter ─────────────────────────────────────────────────────────
+
+export interface IFoodSyncAdapter {
+  readonly source: FoodSource;
+  /** Itera sobre todos os alimentos da fonte, normalizados para o schema Food */
+  syncAll(): AsyncGenerator<Food, void, unknown>;
+}
+
 // ─── IPasswordHasher ─────────────────────────────────────────────────────────
 
 export interface IPasswordHasher {
@@ -6,10 +18,6 @@ export interface IPasswordHasher {
 }
 
 // ─── IEmbeddingService / IAIService ──────────────────────────────────────────
-
-import { DietPlan, MacroTargets, MealType } from '../entities/DietPlan';
-import { Food } from '../entities/Food';
-import { Patient } from '../entities/Patient';
 
 // ─── IEmbeddingService ───────────────────────────────────────────────────────
 

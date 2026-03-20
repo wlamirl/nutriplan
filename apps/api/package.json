@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "drizzle-kit migrate",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:seed": "DOTENV_CONFIG_PATH=../../.env tsx --require dotenv/config src/seeds/foods.seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -19,6 +20,7 @@
     "@nutriplan/domain": "workspace:*",
     "@nutriplan/shared": "workspace:*",
     "bcrypt": "^5.1.1",
+    "bullmq": "^5.4.2",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.31.0",
     "fastify": "^4.28.0",

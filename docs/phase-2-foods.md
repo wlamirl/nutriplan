@@ -42,3 +42,4 @@ Implementar os adapters de sincronização com TBCA, USDA e Open Food Facts, ger
 ### 2.6 — Seed inicial
 - [ ] Script `pnpm --filter api db:seed` com ~200 alimentos brasileiros comuns
 - [ ] Gerar embeddings para todos no seed
+

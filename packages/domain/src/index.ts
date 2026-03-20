@@ -9,3 +9,5 @@ export * from './errors/DomainError';
 export * from './use-cases/GenerateDietPlanUseCase';
 export * from './use-cases/RegisterNutritionistUseCase';
 export * from './use-cases/LoginUseCase';
+export * from './use-cases/SyncFoodSourceUseCase';
+export * from './use-cases/GenerateFoodEmbeddingsUseCase';

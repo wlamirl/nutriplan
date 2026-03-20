@@ -16,6 +16,7 @@ export interface FoodNutrients {
 
 export interface Food {
   id: string;
+  externalId?: string;    // ID no sistema de origem (código TBCA, fdcId USDA, barcode OFF)
   namePt: string;
   nameEn?: string;
   category: string;
