@@ -6,8 +6,10 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import { errorHandler } from './http/middlewares/errorHandler';
-import { authRoutes }  from './http/routes/auth.routes';
-import { foodRoutes }  from './http/routes/food.routes';
+import { authRoutes }     from './http/routes/auth.routes';
+import { foodRoutes }     from './http/routes/food.routes';
+import { patientRoutes }  from './http/routes/patients.routes';
+import { dietPlanRoutes } from './http/routes/diet-plans.routes';
 import { startFoodSyncWorker } from './jobs/food-sync.worker';
 
 const app = Fastify({
@@ -36,11 +38,10 @@ async function bootstrap(): Promise<void> {
   app.setErrorHandler(errorHandler);
 
   // ─── Routes ────────────────────────────────────────────────────────────────
-  await app.register(authRoutes, { prefix: '/auth' });
-  await app.register(foodRoutes, { prefix: '/foods' });
-  // Registradas nas próximas fases:
-  // await app.register(patientRoutes,   { prefix: '/patients' });
-  // await app.register(dietPlanRoutes,  { prefix: '/diet-plans' });
+  await app.register(authRoutes,    { prefix: '/auth' });
+  await app.register(foodRoutes,    { prefix: '/foods' });
+  await app.register(patientRoutes, { prefix: '/patients' });
+  await app.register(dietPlanRoutes, { prefix: '/diet-plans' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

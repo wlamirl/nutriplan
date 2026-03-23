@@ -38,6 +38,7 @@ import {
   IEmbeddingService,
 } from '../services/interfaces';
 import { SemanticQueryBuilder } from './SemanticQueryBuilder';
+import { DomainError } from '../errors/DomainError';
 
 // ─── Input / Output DTOs ──────────────────────────────────────────────────────
 
@@ -71,15 +72,6 @@ export interface GenerateDietPlanRequest {
 export interface GenerateDietPlanResponse {
   plan: DietPlan;
   warnings: string[];
-}
-
-// ─── Domain error ─────────────────────────────────────────────────────────────
-
-export class DomainError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DomainError';
-  }
 }
 
 // ─── Use Case ─────────────────────────────────────────────────────────────────

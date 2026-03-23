@@ -11,3 +11,4 @@ export * from './use-cases/RegisterNutritionistUseCase';
 export * from './use-cases/LoginUseCase';
 export * from './use-cases/SyncFoodSourceUseCase';
 export * from './use-cases/GenerateFoodEmbeddingsUseCase';
+export * from './use-cases/SemanticQueryBuilder';

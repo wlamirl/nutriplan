@@ -75,4 +75,5 @@ export interface IDietPlanRepository {
   findByPatientId(patientId: string): Promise<DietPlan[]>;
   save(plan: DietPlan): Promise<DietPlan>;
   update(id: string, data: Partial<DietPlan>): Promise<DietPlan>;
+  delete(id: string): Promise<void>;
 }

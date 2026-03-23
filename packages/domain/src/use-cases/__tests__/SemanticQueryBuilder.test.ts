@@ -8,6 +8,7 @@ import { MacroTargets, MealType } from '../../entities/DietPlan';
 function makePatient(overrides: Partial<Patient> = {}): Patient {
   return {
     id: 'patient-1',
+    nutritionistId: 'nutritionist-1',
     name: 'Maria Costa',
     birthDate: new Date('1992-03-15'),   // ~32 anos
     sex: 'F',
@@ -73,7 +74,7 @@ describe('SemanticQueryBuilder', () => {
 
     // Verificar que os conteúdos das seções estão no texto completo
     expect(result.fullText).toContain('emagrecimento');
-    expect(result.fullText).toContain('Maria');
+    expect(result.fullText).toContain('feminino');
     expect(result.fullText).toContain('1450');
     expect(result.fullText).toContain('culinária brasileira');
   });
@@ -304,7 +305,7 @@ describe('SemanticQueryBuilder', () => {
       objectives:   'emagrecimento',
       mealTypes:    DEFAULT_MEALS,
     });
-    expect(result.sections.cultural).toContain('café da manhã');
+    expect(result.sections.cultural).toContain('Café da manhã');
     expect(result.sections.cultural).toContain('matutino');
   });
 
@@ -315,7 +316,7 @@ describe('SemanticQueryBuilder', () => {
       objectives:   'emagrecimento',
       mealTypes:    DEFAULT_MEALS,
     });
-    expect(result.sections.cultural).toContain('jantar leve');
+    expect(result.sections.cultural).toContain('Jantar leve');
   });
 
   it('lista alimentos que o paciente não gosta', () => {

@@ -30,6 +30,7 @@ export interface Consultation {
 
 export interface Patient {
   id: string;
+  nutritionistId: string;
   name: string;
   birthDate: Date;
   sex: Sex;

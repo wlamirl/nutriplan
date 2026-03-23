@@ -1,41 +1,50 @@
 /**
  * ClaudeAIService
  *
- * Infrastructure implementation of IAIService.
+ * Infrastructure implementation of IAIService for the API layer.
  * Assembles the full structured prompt and calls the Claude API.
  * Parses the JSON response into DietPlan domain entities.
  */
 
-import { IAIService, GenerateDietPlanInput, GenerateDietPlanOutput } from '../../../domain/src/services/interfaces';
-import { DietPlan, DietMeal, MEAL_LABELS, calculateMealTotals } from '../../../domain/src/entities/DietPlan';
-import { Food, scaleNutrients } from '../../../domain/src/entities/Food';
-import { MacroTargets, MealType } from '../../../domain/src/entities/DietPlan';
-import { Patient } from '../../../domain/src/entities/Patient';
+import {
+  IAIService,
+  GenerateDietPlanInput,
+  GenerateDietPlanOutput,
+  DietPlan,
+  DietMeal,
+  MEAL_LABELS,
+  calculateMealTotals,
+  Food,
+  scaleNutrients,
+  MacroTargets,
+  MealType,
+  Patient,
+} from '@nutriplan/domain';
 
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const CLAUDE_MODEL   = 'claude-sonnet-4-20250514';
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 
 // ─── Raw AI response schema (before domain mapping) ───────────────────────────
 
 interface RawMealItem {
-  food_id: string;
-  food_name: string;
+  food_id:    string;
+  food_name:  string;
   quantity_g: number;
 }
 
 interface RawMeal {
-  meal_type: MealType;
-  scheduled_time?: string;
-  items: RawMealItem[];
+  meal_type:         MealType;
+  scheduled_time?:   string;
+  items:             RawMealItem[];
   nutritionist_note?: string;
 }
 
 interface RawDietPlan {
-  meals: RawMeal[];
-  total_daily_kcal: number;
-  total_daily_protein_g: number;
-  total_daily_carbs_g: number;
-  total_daily_fat_g: number;
+  meals:                  RawMeal[];
+  total_daily_kcal:       number;
+  total_daily_protein_g:  number;
+  total_daily_carbs_g:    number;
+  total_daily_fat_g:      number;
 }
 
 // ─── Service implementation ───────────────────────────────────────────────────
@@ -67,12 +76,15 @@ export class ClaudeAIService implements IAIService {
       throw new Error(`Claude API error ${response.status}: ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      content: Array<{ type: string; text: string }>;
+      usage?: { input_tokens: number; output_tokens: number };
+    };
     const rawText: string = data.content[0]?.text ?? '';
 
     // Strip markdown fences if Claude wrapped the JSON
     const jsonText = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const raw: RawDietPlan = JSON.parse(jsonText);
+    const raw: RawDietPlan = JSON.parse(jsonText) as RawDietPlan;
 
     // Build a food lookup map for O(1) nutrient access
     const foodMap = new Map<string, Food>(input.candidateFoods.map(f => [f.id, f]));
@@ -102,8 +114,8 @@ export class ClaudeAIService implements IAIService {
     });
 
     const plan: Omit<DietPlan, 'id' | 'patientId' | 'consultationId' | 'startDate' | 'endDate'> = {
-      objectives:          input.objectives,
-      macroTargets:        input.macroTargets,
+      objectives:         input.objectives,
+      macroTargets:       input.macroTargets,
       meals,
       totalDailyKcal:     raw.total_daily_kcal,
       totalDailyProteinG: raw.total_daily_protein_g,
@@ -203,11 +215,11 @@ Tipos de refeição válidos: breakfast, morning_snack, lunch, afternoon_snack, 
       `- Peso atual: ${consultation.weightKg} kg`,
       `- Altura: ${patient.heightCm} cm`,
       `- IMC: ${bmi}`,
-      consultation.bodyFatPct ? `- Gordura corporal: ${consultation.bodyFatPct}%` : '',
-      consultation.muscleMassKg ? `- Massa muscular: ${consultation.muscleMassKg} kg` : '',
+      consultation.bodyFatPct   ? `- Gordura corporal: ${consultation.bodyFatPct}%`     : '',
+      consultation.muscleMassKg ? `- Massa muscular: ${consultation.muscleMassKg} kg`   : '',
       `- Nível de atividade: ${patient.activityLevel}`,
       patient.culturalPreferences ? `- Preferências culturais: ${patient.culturalPreferences}` : '',
-      patient.routineNotes ? `- Rotina: ${patient.routineNotes}` : '',
+      patient.routineNotes        ? `- Rotina: ${patient.routineNotes}`                        : '',
       patient.dislikedFoods?.length
         ? `- Alimentos que não gosta: ${patient.dislikedFoods.join(', ')}`
         : '',
@@ -229,11 +241,9 @@ Tipos de refeição válidos: breakfast, morning_snack, lunch, afternoon_snack, 
     if (!patient.restrictions.length) {
       return '## Restrições alimentares\nNenhuma restrição cadastrada.';
     }
-
     const lines = patient.restrictions.map(r =>
       `- [${r.type.toUpperCase()}] ${r.description}`
     );
-
     return ['## Restrições alimentares (OBRIGATÓRIO respeitar)', ...lines].join('\n');
   }
 
@@ -247,8 +257,8 @@ Tipos de refeição válidos: breakfast, morning_snack, lunch, afternoon_snack, 
 
     const rows = foods.map(f =>
       `| ${f.id} | ${f.namePt} | ${f.nutrients.kcalPer100g} kcal | ` +
-      `P:${f.nutrients.proteinG}g C:${f.nutrients.carbsG}g G:${f.nutrients.fatG}g ` +
-      (f.nutrients.fiberG ? `Fib:${f.nutrients.fiberG}g` : '') +
+      `P:${f.nutrients.proteinG}g C:${f.nutrients.carbsG}g G:${f.nutrients.fatG}g` +
+      (f.nutrients.fiberG ? ` Fib:${f.nutrients.fiberG}g` : '') +
       ` | ${f.primarySource} |`
     );
 
