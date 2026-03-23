@@ -37,7 +37,7 @@ import {
   IAIService,
   IEmbeddingService,
 } from '../services/interfaces';
-import { DomainError } from '../errors/DomainError';
+import { SemanticQueryBuilder } from './SemanticQueryBuilder';
 
 // ─── Input / Output DTOs ──────────────────────────────────────────────────────
 
@@ -73,6 +73,15 @@ export interface GenerateDietPlanResponse {
   warnings: string[];
 }
 
+// ─── Domain error ─────────────────────────────────────────────────────────────
+
+export class DomainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DomainError';
+  }
+}
+
 // ─── Use Case ─────────────────────────────────────────────────────────────────
 
 export class GenerateDietPlanUseCase {
@@ -95,6 +104,8 @@ export class GenerateDietPlanUseCase {
     'dinner',
   ];
 
+  private readonly queryBuilder = new SemanticQueryBuilder();
+
   constructor(
     private readonly patientRepo:  IPatientRepository,
     private readonly foodRepo:     IFoodRepository,
@@ -113,7 +124,15 @@ export class GenerateDietPlanUseCase {
     const macroTargets = this.buildMacroTargets(patient, req);
 
     // 3. Build semantic search query from patient profile
-    const semanticQuery = this.buildSemanticQuery(patient, macroTargets, req.objectives);
+    const queryResult = this.queryBuilder.build({
+      patient,
+      macroTargets,
+      objectives:  req.objectives,
+      mealTypes:   req.mealTypes ?? GenerateDietPlanUseCase.DEFAULT_MEALS,
+      extraContext: req.extraContext,
+    });
+
+    const semanticQuery = queryResult.fullText;
 
     // 4. Generate embedding vector for the query
     const queryEmbedding = await this.embedService.embed(semanticQuery);

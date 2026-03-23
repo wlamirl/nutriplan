@@ -6,11 +6,11 @@
  * Parses the JSON response into DietPlan domain entities.
  */
 
-import { IAIService, GenerateDietPlanInput, GenerateDietPlanOutput } from '../../domain/src/services/interfaces';
-import { DietPlan, DietMeal, MEAL_LABELS, calculateMealTotals } from '../../domain/src/entities/DietPlan';
-import { Food, scaleNutrients } from '../../domain/src/entities/Food';
-import { MacroTargets, MealType } from '../../domain/src/entities/DietPlan';
-import { Patient } from '../../domain/src/entities/Patient';
+import { IAIService, GenerateDietPlanInput, GenerateDietPlanOutput } from '../../../domain/src/services/interfaces';
+import { DietPlan, DietMeal, MEAL_LABELS, calculateMealTotals } from '../../../domain/src/entities/DietPlan';
+import { Food, scaleNutrients } from '../../../domain/src/entities/Food';
+import { MacroTargets, MealType } from '../../../domain/src/entities/DietPlan';
+import { Patient } from '../../../domain/src/entities/Patient';
 
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
