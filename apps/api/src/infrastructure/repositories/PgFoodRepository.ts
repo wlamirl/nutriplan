@@ -1,168 +1,340 @@
-import { eq, sql, and, not, inArray } from 'drizzle-orm';
-import { db } from '../database/db';
-import { foods, foodEmbeddings } from '../database/schema';
-import {
-  IFoodRepository,
-  FoodSearchOptions,
-  UpsertFoodResult,
-  Food,
-} from '@nutriplan/domain';
+/**
+ * PgFoodRepository
+ *
+ * Implementação concreta de IFoodRepository usando PostgreSQL + pgvector.
+ * O método searchBySimilarity é o coração do sistema RAG.
+ */
+
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { sql, and, notInArray, between, inArray, eq, SQL } from 'drizzle-orm';
+import { IFoodRepository, FoodSearchOptions, UpsertFoodResult } from '@nutriplan/domain/src/repositories/interfaces';
+
+import { Food, FoodNutrients } from '@nutriplan/domain/src/entities/Food';
+import * as schema from '../database/schema';
+
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? 'claude-3-haiku-20240307';
 
 export class PgFoodRepository implements IFoodRepository {
+  constructor(private readonly db: NodePgDatabase<typeof schema>) {}
 
-  // ─── Busca vetorial via pgvector ──────────────────────────────────────────
+  // ─── searchBySimilarity ────────────────────────────────────────────────────
+  //
+  // Pipeline:
+  //   1. Serializar o vetor de query para o formato pgvector '[...]'
+  //   2. Aplicar filtros SQL (tags, nomes, kcal)
+  //   3. Ordenar por distância de cosseno com o operador <=>
+  //   4. Fazer LIMIT topK
+  //   5. Mapear rows para entidades Food do domain
 
-  async searchBySimilarity(opts: FoodSearchOptions): Promise<Food[]> {
-    const topK          = opts.topK          ?? 20;
-    const excludeTags   = opts.excludeTags   ?? [];
-    const excludeNames  = opts.excludeNames  ?? [];
+  async searchBySimilarity(options: FoodSearchOptions): Promise<Food[]> {
+    const {
+      queryEmbedding,
+      topK = 30,
+      excludeTags = [],
+      excludeNames = [],
+      kcalRange,
+      categories,
+    } = options;
 
-    const vectorLiteral = `[${opts.queryEmbedding.join(',')}]`;
+    // Serializar vetor para formato pgvector
+    const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
-    // SQL raw é necessário para operadores pgvector (<=>)
-    const rows = await db.execute<{
-      id: string; external_id: string | null; name_pt: string; name_en: string | null;
-      category: string; subcategory: string | null; tags: string[];
-      kcal_per100g: string; protein_g: string; carbs_g: string; fat_g: string;
-      fiber_g: string | null; sodium_mg: string | null; calcium_mg: string | null;
-      iron_mg: string | null; zinc_mg: string | null; vit_c_mg: string | null;
-      vit_b12_mcg: string | null; primary_source: string; similarity: string;
-    }>(sql`
+    // Ajustar probes para balance recall/speed
+    // Para geração de dietas: priorizamos recall (mais alimentos relevantes)
+    await this.db.execute(sql`SET LOCAL ivfflat.probes = 10`);
+
+    // Também configurar o modelo de embedding para a view foods_with_nutrients
+    await this.db.execute(
+      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
+    );
+
+    // Construir filtros condicionais
+    const filters: SQL[] = [];
+
+    // Filtro de tags excluídas (alergias, intolerâncias)
+    if (excludeTags.length > 0) {
+      filters.push(sql`
+        NOT EXISTS (
+          SELECT 1 FROM food_tags ft
+          WHERE ft.food_id = fwn.id
+          AND ft.tag = ANY(${excludeTags})
+        )
+      `);
+    }
+
+    // Filtro de nomes excluídos (alergias específicas)
+    if (excludeNames.length > 0) {
+      filters.push(sql`
+        unaccent(lower(fwn.name_pt)) NOT IN (
+          SELECT unaccent(lower(n)) FROM unnest(${excludeNames}::text[]) AS n
+        )
+      `);
+    }
+
+    // Filtro de range calórico
+    if (kcalRange?.min !== undefined) {
+      filters.push(sql`fwn.kcal_per_100g >= ${kcalRange.min}`);
+    }
+    if (kcalRange?.max !== undefined) {
+      filters.push(sql`fwn.kcal_per_100g <= ${kcalRange.max}`);
+    }
+
+    // Filtro de categorias
+    if (categories && categories.length > 0) {
+      filters.push(sql`fwn.category = ANY(${categories})`);
+    }
+
+    const whereClause = filters.length > 0
+      ? sql`WHERE ${sql.join(filters, sql` AND `)}`
+      : sql``;
+
+    // Query principal com busca vetorial
+    // A VIEW foods_with_nutrients já faz o JOIN com food_sources e food_embeddings
+    const rows = await this.db.execute<FoodRow>(sql`
       SELECT
-        f.id, f.external_id, f.name_pt, f.name_en, f.category, f.subcategory, f.tags,
-        f.kcal_per100g, f.protein_g, f.carbs_g, f.fat_g, f.fiber_g,
-        f.sodium_mg, f.calcium_mg, f.iron_mg, f.zinc_mg, f.vit_c_mg, f.vit_b12_mcg,
-        f.primary_source,
-        1 - (fe.embedding <=> ${sql.raw(`'${vectorLiteral}'::vector`)}::vector) AS similarity
-      FROM foods f
-      JOIN food_embeddings fe ON fe.food_id = f.id
-      ${excludeTags.length   ? sql`WHERE NOT (f.tags && ${excludeTags}::text[])` : sql``}
-      ${excludeNames.length  ? sql`AND f.name_pt NOT IN (${sql.join(excludeNames.map(n => sql`${n}`), sql`, `)})` : sql``}
-      ORDER BY fe.embedding <=> ${sql.raw(`'${vectorLiteral}'::vector`)}::vector
+        fwn.*,
+        -- Distância de cosseno (0 = idêntico, 2 = oposto)
+        -- Convertemos para similarity score (1 - distância)
+        1 - (fwn.embedding <=> ${vectorLiteral}::vector) AS similarity_score
+      FROM foods_with_nutrients fwn
+      ${whereClause}
+      -- Ordenar por similaridade decrescente (mais similar primeiro)
+      ORDER BY fwn.embedding <=> ${vectorLiteral}::vector
       LIMIT ${topK}
     `);
 
-    return rows.rows.map(r => this.toDomain(r as unknown as typeof foods.$inferSelect & { similarity?: string }));
+    return rows.rows.map(this.mapRowToFood);
   }
 
-  // ─── Leitura ──────────────────────────────────────────────────────────────
+  // ─── findById ──────────────────────────────────────────────────────────────
 
   async findById(id: string): Promise<Food | null> {
-    const rows = await db.select().from(foods).where(eq(foods.id, id)).limit(1);
-    return rows[0] ? this.toDomain(rows[0]) : null;
+    await this.db.execute(
+      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
+    );
+
+    const rows = await this.db.execute<FoodRow>(sql`
+      SELECT *, NULL::float AS similarity_score
+      FROM foods_with_nutrients
+      WHERE id = ${id}
+      LIMIT 1
+    `);
+
+    return rows.rows[0] ? this.mapRowToFood(rows.rows[0]) : null;
   }
+
+  // ─── findByName ────────────────────────────────────────────────────────────
+  // Busca textual usando trigrama (pg_trgm) para tolerância a erros de digitação
 
   async findByName(name: string): Promise<Food[]> {
-    const rows = await db.select().from(foods)
-      .where(sql`lower(${foods.namePt}) like lower(${'%' + name + '%'})`);
-    return rows.map(r => this.toDomain(r));
+    await this.db.execute(
+      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
+    );
+
+    const rows = await this.db.execute<FoodRow>(sql`
+      SELECT
+        fwn.*,
+        NULL::float AS similarity_score,
+        similarity(unaccent(fwn.name_pt), unaccent(${name})) AS text_similarity
+      FROM foods_with_nutrients fwn
+      WHERE unaccent(fwn.name_pt) % unaccent(${name})   -- threshold padrão 0.3
+         OR to_tsvector('portuguese', fwn.name_pt) @@ plainto_tsquery('portuguese', ${name})
+      ORDER BY text_similarity DESC NULLS LAST
+      LIMIT 20
+    `);
+
+    return rows.rows.map(this.mapRowToFood);
   }
 
-  async findAll(opts?: { limit?: number; offset?: number }): Promise<Food[]> {
-    const rows = await db.select().from(foods)
-      .limit(opts?.limit   ?? 1000)
-      .offset(opts?.offset ?? 0);
-    return rows.map(r => this.toDomain(r));
+  // ─── findAll ───────────────────────────────────────────────────────────────
+
+  async findAll(options?: { limit?: number; offset?: number }): Promise<Food[]> {
+    const rows = await this.db.execute<FoodRow>(sql`
+      SELECT *, NULL::float AS similarity_score
+      FROM foods_with_nutrients
+      ORDER BY name_pt
+      LIMIT ${options?.limit ?? 100}
+      OFFSET ${options?.offset ?? 0}
+    `);
+
+    return rows.rows.map(this.mapRowToFood);
   }
 
-  async countAll(): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` }).from(foods);
-    return Number(result[0]?.count ?? 0);
+  // ─── findWithoutEmbeddings ─────────────────────────────────────────────────
+
+  async findWithoutEmbeddings(limit = 100): Promise<Food[]> {
+    const rows = await this.db.execute<FoodRow>(sql`
+      SELECT fwn.*, NULL::float AS similarity_score
+      FROM foods_with_nutrients fwn
+      WHERE NOT EXISTS (
+        SELECT 1 FROM food_embeddings fe
+        WHERE fe.food_id = fwn.id
+          AND fe.model_version = ${EMBEDDING_MODEL}
+      )
+      ORDER BY fwn.name_pt
+      LIMIT ${limit}
+    `);
+
+    return rows.rows.map(this.mapRowToFood);
   }
 
-  async findWithoutEmbeddings(limit = 500): Promise<Food[]> {
-    const withEmbedding = db.select({ foodId: foodEmbeddings.foodId }).from(foodEmbeddings);
-    const rows = await db.select().from(foods)
-      .where(not(inArray(foods.id, withEmbedding)))
-      .limit(limit);
-    return rows.map(r => this.toDomain(r));
-  }
-
-  // ─── Escrita ──────────────────────────────────────────────────────────────
-
-  async upsert(food: Food): Promise<UpsertFoodResult> {
-    // Tenta encontrar por (primarySource, externalId) para deduplicação
-    if (food.externalId) {
-      const existing = await db.select({ id: foods.id })
-        .from(foods)
-        .where(and(
-          eq(foods.primarySource, food.primarySource),
-          eq(foods.externalId,    food.externalId),
-        ))
-        .limit(1);
-
-      if (existing[0]) {
-        const updated = await db.update(foods)
-          .set(this.toRow(food))
-          .where(eq(foods.id, existing[0].id))
-          .returning();
-        return { food: this.toDomain(updated[0]!), created: false };
-      }
-    }
-
-    const inserted = await db.insert(foods).values(this.toRow(food)).returning();
-    return { food: this.toDomain(inserted[0]!), created: true };
-  }
+  // ─── saveEmbedding ─────────────────────────────────────────────────────────
 
   async saveEmbedding(foodId: string, embedding: number[]): Promise<void> {
-    await db.insert(foodEmbeddings)
-      .values({ foodId, embedding })
+    const food = await this.db
+      .select({ embeddingText: schema.foods.embeddingText })
+      .from(schema.foods)
+      .where(eq(schema.foods.id, foodId))
+      .limit(1);
+
+    const sourceText = food[0]?.embeddingText ?? '';
+
+    await this.db
+      .insert(schema.foodEmbeddings)
+      .values({
+        foodId,
+        embedding,
+        modelVersion: EMBEDDING_MODEL,
+        sourceText,
+      })
       .onConflictDoUpdate({
-        target: foodEmbeddings.foodId,
-        set:    { embedding },
+        target: [schema.foodEmbeddings.foodId, schema.foodEmbeddings.modelVersion],
+        set: {
+          embedding,
+          generatedAt: new Date(),
+        },
       });
   }
 
-  // ─── Mapeamento ───────────────────────────────────────────────────────────
+  // ─── countAll ─────────────────────────────────────────────────────────────
 
-  private toDomain(row: typeof foods.$inferSelect & { similarity?: string }): Food {
-    return {
-      id:             row.id,
-      externalId:     row.externalId ?? undefined,
-      namePt:         row.namePt,
-      nameEn:         row.nameEn    ?? undefined,
-      category:       row.category,
-      subcategory:    row.subcategory ?? undefined,
-      tags:           row.tags ?? [],
-      primarySource:  row.primarySource,
-      similarityScore: row.similarity != null ? parseFloat(row.similarity) : undefined,
-      nutrients: {
-        kcalPer100g: parseFloat(row.kcalPer100g),
-        proteinG:    parseFloat(row.proteinG),
-        carbsG:      parseFloat(row.carbsG),
-        fatG:        parseFloat(row.fatG),
-        fiberG:      row.fiberG    != null ? parseFloat(row.fiberG)    : undefined,
-        sodiumMg:    row.sodiumMg  != null ? parseFloat(row.sodiumMg)  : undefined,
-        calciumMg:   row.calciumMg != null ? parseFloat(row.calciumMg) : undefined,
-        ironMg:      row.ironMg    != null ? parseFloat(row.ironMg)    : undefined,
-        zincMg:      row.zincMg    != null ? parseFloat(row.zincMg)    : undefined,
-        vitCMg:      row.vitCMg    != null ? parseFloat(row.vitCMg)    : undefined,
-        vitB12Mcg:   row.vitB12Mcg != null ? parseFloat(row.vitB12Mcg) : undefined,
-      },
-    };
+  async countAll(): Promise<number> {
+    const result = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.foods)
+      .where(eq(schema.foods.isActive, true));
+
+    return result[0]?.count ?? 0;
   }
 
-  private toRow(food: Food): typeof foods.$inferInsert {
+  // ─── upsert ────────────────────────────────────────────────────────────────
+
+  async upsert(food: Food): Promise<UpsertFoodResult> {
+    const result = await this.db
+      .insert(schema.foods)
+      .values({
+        id:            food.id,
+        namePt:        food.namePt,
+        nameEn:        food.nameEn,
+        category:      food.category,
+        subcategory:   food.subcategory,
+        primarySource: food.primarySource,
+        isActive:      true,
+        updatedAt:     new Date(),
+      })
+      .onConflictDoUpdate({
+        target: schema.foods.id,
+        set: {
+          namePt:        food.namePt,
+          nameEn:        food.nameEn,
+          category:      food.category,
+          subcategory:   food.subcategory,
+          primarySource: food.primarySource,
+          updatedAt:     new Date(),
+        },
+      })
+      .returning({ wasInserted: sql<boolean>`(xmax = 0)` });
+
+    const created = result[0]?.wasInserted ?? false;
+
+    // Upsert na fonte primária
+    await this.db
+      .insert(schema.foodSources)
+      .values({
+        foodId:       food.id,
+        source:       food.primarySource,
+        kcalPer100g:  food.nutrients.kcalPer100g,
+        proteinG:     food.nutrients.proteinG,
+        carbsG:       food.nutrients.carbsG,
+        fatG:         food.nutrients.fatG,
+        fiberG:       food.nutrients.fiberG,
+        extraNutrients: {
+          sodiumMg:   food.nutrients.sodiumMg,
+          calciumMg:  food.nutrients.calciumMg,
+          ironMg:     food.nutrients.ironMg,
+          zincMg:     food.nutrients.zincMg,
+          vitCMg:     food.nutrients.vitCMg,
+          vitB12Mcg:  food.nutrients.vitB12Mcg,
+        },
+      })
+      .onConflictDoUpdate({
+        target: [schema.foodSources.foodId, schema.foodSources.source],
+        set: {
+          kcalPer100g: food.nutrients.kcalPer100g,
+          proteinG:    food.nutrients.proteinG,
+          carbsG:      food.nutrients.carbsG,
+          fatG:        food.nutrients.fatG,
+          fiberG:      food.nutrients.fiberG,
+          syncedAt:    new Date(),
+          updatedAt:   new Date(),
+        },
+      });
+
+    return { food, created };
+  }
+
+  // ─── Mapper ────────────────────────────────────────────────────────────────
+
+  private mapRowToFood(row: FoodRow): Food {
+    const nutrients: FoodNutrients = {
+      kcalPer100g: row.kcal_per_100g,
+      proteinG:    row.protein_g,
+      carbsG:      row.carbs_g,
+      fatG:        row.fat_g,
+      fiberG:      row.fiber_g ?? undefined,
+      sodiumMg:    row.extra_nutrients?.sodiumMg,
+      calciumMg:   row.extra_nutrients?.calciumMg,
+      ironMg:      row.extra_nutrients?.ironMg,
+      zincMg:      row.extra_nutrients?.zincMg,
+      vitCMg:      row.extra_nutrients?.vitCMg,
+      vitB12Mcg:   row.extra_nutrients?.vitB12Mcg,
+    };
+
     return {
-      id:            food.id,
-      externalId:    food.externalId,
-      namePt:        food.namePt,
-      nameEn:        food.nameEn,
-      category:      food.category,
-      subcategory:   food.subcategory,
-      tags:          food.tags,
-      primarySource: food.primarySource,
-      kcalPer100g:   String(food.nutrients.kcalPer100g),
-      proteinG:      String(food.nutrients.proteinG),
-      carbsG:        String(food.nutrients.carbsG),
-      fatG:          String(food.nutrients.fatG),
-      fiberG:        food.nutrients.fiberG    != null ? String(food.nutrients.fiberG)    : null,
-      sodiumMg:      food.nutrients.sodiumMg  != null ? String(food.nutrients.sodiumMg)  : null,
-      calciumMg:     food.nutrients.calciumMg != null ? String(food.nutrients.calciumMg) : null,
-      ironMg:        food.nutrients.ironMg    != null ? String(food.nutrients.ironMg)    : null,
-      zincMg:        food.nutrients.zincMg    != null ? String(food.nutrients.zincMg)    : null,
-      vitCMg:        food.nutrients.vitCMg    != null ? String(food.nutrients.vitCMg)    : null,
-      vitB12Mcg:     food.nutrients.vitB12Mcg != null ? String(food.nutrients.vitB12Mcg) : null,
+      id:              row.id,
+      namePt:          row.name_pt,
+      nameEn:          row.name_en ?? undefined,
+      category:        row.category,
+      subcategory:     row.subcategory ?? undefined,
+      tags:            row.tags ?? [],
+      nutrients,
+      primarySource:   row.primary_source as Food['primarySource'],
+      similarityScore: row.similarity_score ?? undefined,
     };
   }
+}
+
+// ─── Tipo do row retornado pela view ─────────────────────────────────────────
+
+interface FoodRow {
+  [key: string]: unknown;
+  id:              string;
+  name_pt:         string;
+  name_en:         string | null;
+  category:        string;
+  subcategory:     string | null;
+  primary_source:  string;
+  is_active:       boolean;
+  kcal_per_100g:   number;
+  protein_g:       number;
+  carbs_g:         number;
+  fat_g:           number;
+  fiber_g:         number | null;
+  extra_nutrients: Record<string, number> | null;
+  data_quality:    string | null;
+  nutrient_source: string;
+  embedding:       number[] | null;
+  embedding_model: string | null;
+  tags:            string[] | null;
+  similarity_score: number | null;
 }

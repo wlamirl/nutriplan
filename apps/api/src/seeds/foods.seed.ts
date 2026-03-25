@@ -8,6 +8,7 @@
 import { PgFoodRepository }       from '../infrastructure/repositories/PgFoodRepository';
 import { ClaudeEmbeddingService }  from '../infrastructure/ai/ClaudeEmbeddingService';
 import { GenerateFoodEmbeddingsUseCase } from '@nutriplan/domain';
+import { db } from '../infrastructure/database/db';
 import { Food, FoodSource }        from '@nutriplan/domain';
 import { createHash }              from 'crypto';
 
@@ -186,7 +187,7 @@ const FOODS: Food[] = [
 async function main(): Promise<void> {
   console.log(`Inserindo ${FOODS.length} alimentos...`);
 
-  const foodRepo = new PgFoodRepository();
+  const foodRepo = new PgFoodRepository(db);
   let inserted   = 0;
   let updated    = 0;
 
