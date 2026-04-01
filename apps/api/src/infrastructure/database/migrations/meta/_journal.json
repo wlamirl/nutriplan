@@ -29,6 +29,20 @@
       "when": 1742342403000,
       "tag": "0004_foods_embeddings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775001600000,
+      "tag": "0008_update_core_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775001601000,
+      "tag": "0009_update_foods_schema",
+      "breakpoints": true
     }
   ]
 }

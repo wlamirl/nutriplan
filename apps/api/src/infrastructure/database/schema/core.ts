@@ -32,6 +32,7 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { foods } from './foods';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -337,6 +338,4 @@ export const dietMealItems = pgTable('diet_meal_items', {
   dietMealItemsKcalPositive:     check('diet_meal_items_kcal_positive',     sql`kcal >= 0`),
 }));
 
-// ─── Forward declaration para referência circular ─────────────────────────────
-// (foods é definido em foods.ts, importado aqui apenas para FK)
-import { foods } from './foods';
+
