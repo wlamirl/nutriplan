@@ -5,7 +5,7 @@ import { AppError } from '@nutriplan/shared';
 
 export interface JwtPayload {
   sub: string;               // user id
-  role: 'nutritionist' | 'admin';
+  role: 'nutritionist' | 'admin' | 'patient';
   email: string;
 }
 

@@ -12,9 +12,10 @@ import { ClaudeEmbeddingService } from '../../infrastructure/ai/ClaudeEmbeddingS
 import { authenticate, requireAdmin } from '../middlewares/authenticate';
 import { dispatchFoodSync }    from '../../jobs/food-sync.queue';
 import type { FoodSyncJobName } from '../../jobs/food-sync.queue';
+import { db }                  from '../../infrastructure/database/db';
 
 export async function foodRoutes(app: FastifyInstance): Promise<void> {
-  const foodRepo    = new PgFoodRepository();
+  const foodRepo    = new PgFoodRepository(db);
   const syncLogRepo = new PgSyncLogRepository();
   const embedSvc    = new ClaudeEmbeddingService(
     process.env.ANTHROPIC_API_KEY ?? (() => { throw new Error('ANTHROPIC_API_KEY não definido'); })(),
@@ -22,7 +23,17 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /foods/search?q=arroz ───────────────────────────────────────────
 
-  app.get('/search', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/search', {
+    schema: {
+      tags:        ['Foods'],
+      summary:     'Buscar alimentos por nome',
+      querystring: { type: 'object', properties: { q: { type: 'string' }, limit: { type: 'integer', default: 20 } } },
+      response: {
+        200: { description: 'Lista de alimentos', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const parsed = FoodSearchQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -36,7 +47,16 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /foods/similar ──────────────────────────────────────────────────
 
-  app.post('/similar', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/similar', {
+    schema: {
+      tags:    ['Foods'],
+      summary: 'Busca semântica de alimentos por similaridade (RAG)',
+      response: {
+        200: { description: 'Alimentos similares', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const parsed = FoodSimilaritySearchSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -63,7 +83,16 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /foods/sync — dispara sync manual (admin only) ─────────────────
 
-  app.post('/sync', { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post('/sync', {
+    schema: {
+      tags:    ['Foods'],
+      summary: 'Disparar sincronização manual de alimentos (admin)',
+      response: {
+        202: { description: 'Sync agendado', type: 'object', properties: { data: { type: 'object' } } },
+      },
+    },
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const parsed = TriggerSyncSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -87,7 +116,17 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /foods/sync/logs ─────────────────────────────────────────────────
 
-  app.get('/sync/logs', { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.get('/sync/logs', {
+    schema: {
+      tags:        ['Foods'],
+      summary:     'Listar logs de sincronização (admin)',
+      querystring: { type: 'object', properties: { source: { type: 'string', enum: ['TBCA', 'USDA', 'OFF'] } } },
+      response: {
+        200: { description: 'Logs de sync', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { source } = request.query as { source?: string };
     const validSource = source === 'TBCA' || source === 'USDA' || source === 'OFF'
       ? source

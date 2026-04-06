@@ -11,6 +11,7 @@ import {
   GenerateFoodEmbeddingsUseCase,
 } from '@nutriplan/domain';
 import { FoodSyncJobData, FoodSyncJobName } from './food-sync.queue';
+import { db } from '../infrastructure/database/db';
 
 const logger = {
   info:  (data: unknown, msg?: string) => console.log(`[food-sync] ${msg ?? ''}`, data),
@@ -18,7 +19,7 @@ const logger = {
 };
 
 function buildDeps() {
-  const foodRepo    = new PgFoodRepository();
+  const foodRepo    = new PgFoodRepository(db);
   const syncLogRepo = new PgSyncLogRepository();
   const embedSvc    = new ClaudeEmbeddingService(
     process.env.ANTHROPIC_API_KEY ?? (() => { throw new Error('ANTHROPIC_API_KEY não definido'); })(),

@@ -5,7 +5,7 @@ import { Consultation } from '@nutriplan/domain';
 
 export class PgConsultationRepository {
 
-  async create(patientId: string, data: {
+  async create(patientId: string, nutritionistId: string, data: {
     date?: Date;
     weightKg: number;
     bodyFatPct?: number;
@@ -16,10 +16,11 @@ export class PgConsultationRepository {
       .insert(consultations)
       .values({
         patientId,
-        date:         data.date ?? new Date(),
-        weightKg:     String(data.weightKg),
-        bodyFatPct:   data.bodyFatPct   != null ? String(data.bodyFatPct)   : null,
-        muscleMassKg: data.muscleMassKg != null ? String(data.muscleMassKg) : null,
+        nutritionistId,
+        date:         (data.date ?? new Date()).toISOString().split('T')[0]!,
+        weightKg:     data.weightKg,
+        bodyFatPct:   data.bodyFatPct   ?? null,
+        muscleMassKg: data.muscleMassKg ?? null,
         notes:        data.notes ?? null,
       })
       .returning();
@@ -52,10 +53,10 @@ export class PgConsultationRepository {
   private toDomain(row: typeof consultations.$inferSelect): Consultation {
     return {
       id:           row.id,
-      date:         row.date,
-      weightKg:     parseFloat(row.weightKg),
-      bodyFatPct:   row.bodyFatPct   != null ? parseFloat(row.bodyFatPct)   : undefined,
-      muscleMassKg: row.muscleMassKg != null ? parseFloat(row.muscleMassKg) : undefined,
+      date:         new Date(row.date),
+      weightKg:     row.weightKg,
+      bodyFatPct:   row.bodyFatPct   ?? undefined,
+      muscleMassKg: row.muscleMassKg ?? undefined,
       notes:        row.notes ?? undefined,
     };
   }

@@ -1,6 +1,6 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { db } from '../database/db';
-import { dietPlans, dietMeals, dietMealItems, foods } from '../database/schema';
+import { dietPlans, dietMeals, dietMealItems, foods, foodSources } from '../database/schema';
 import {
   IDietPlanRepository,
   DietPlan,
@@ -24,19 +24,26 @@ export class PgDietPlanRepository implements IDietPlanRepository {
     const mealRows = await db
       .select()
       .from(dietMeals)
-      .where(eq(dietMeals.dietPlanId, id));
+      .where(eq(dietMeals.dietPlanId, id))
+      .orderBy(dietMeals.orderIndex);
 
     const mealIds = mealRows.map(m => m.id);
 
     const itemRows = mealIds.length > 0
       ? await db
-          .select({ item: dietMealItems, food: foods })
+          .select({ item: dietMealItems, food: foods, source: foodSources })
           .from(dietMealItems)
           .innerJoin(foods, eq(dietMealItems.foodId, foods.id))
+          .leftJoin(
+            foodSources,
+            and(
+              eq(foodSources.foodId, foods.id),
+              eq(foodSources.source, foods.primarySource),
+            ),
+          )
           .where(inArray(dietMealItems.dietMealId, mealIds))
       : [];
 
-    // Group items by mealId for O(n) reconstruction
     const itemsByMealId = new Map<string, typeof itemRows>();
     for (const row of itemRows) {
       const list = itemsByMealId.get(row.item.dietMealId) ?? [];
@@ -49,11 +56,11 @@ export class PgDietPlanRepository implements IDietPlanRepository {
       scheduledTime:    meal.scheduledTime    ?? undefined,
       nutritionistNote: meal.nutritionistNote ?? undefined,
       totalKcal:        meal.totalKcal,
-      totalProteinG:    parseFloat(meal.totalProteinG),
-      totalCarbsG:      parseFloat(meal.totalCarbsG),
-      totalFatG:        parseFloat(meal.totalFatG),
-      items: (itemsByMealId.get(meal.id) ?? []).map(({ item, food }) =>
-        this.toFoodWithQuantity(food, item)
+      totalProteinG:    meal.totalProteinG,
+      totalCarbsG:      meal.totalCarbsG,
+      totalFatG:        meal.totalFatG,
+      items: (itemsByMealId.get(meal.id) ?? []).map(({ item, food, source }) =>
+        this.toFoodWithQuantity(food, item, source)
       ),
     }));
 
@@ -66,7 +73,6 @@ export class PgDietPlanRepository implements IDietPlanRepository {
       .from(dietPlans)
       .where(eq(dietPlans.patientId, patientId));
 
-    // Return summary without nested meals for list performance
     return rows.map(r => this.toDomain(r, []));
   }
 
@@ -75,27 +81,33 @@ export class PgDietPlanRepository implements IDietPlanRepository {
   async save(plan: DietPlan): Promise<DietPlan> {
     return await db.transaction(async (tx) => {
       const insertValues: typeof dietPlans.$inferInsert = {
-        patientId:          plan.patientId,
-        consultationId:     plan.consultationId ?? null,
-        startDate:          plan.startDate,
-        endDate:            plan.endDate,
-        objectives:         plan.objectives,
-        targetKcal:         plan.macroTargets.kcal,
-        targetProteinG:     plan.macroTargets.proteinG,
-        targetCarbsG:       plan.macroTargets.carbsG,
-        targetFatG:         plan.macroTargets.fatG,
-        targetProteinPct:   plan.macroTargets.proteinPct,
-        targetCarbsPct:     plan.macroTargets.carbsPct,
-        targetFatPct:       plan.macroTargets.fatPct,
-        totalDailyKcal:     plan.totalDailyKcal,
-        totalDailyProteinG: String(plan.totalDailyProteinG),
-        totalDailyCarbsG:   String(plan.totalDailyCarbsG),
-        totalDailyFatG:     String(plan.totalDailyFatG),
-        aiModel:            plan.aiGenerationMeta?.model            ?? null,
-        aiPromptTokens:     plan.aiGenerationMeta?.promptTokens     ?? null,
-        aiCompletionTokens: plan.aiGenerationMeta?.completionTokens ?? null,
-        aiFoodSources:      plan.aiGenerationMeta?.foodSourcesUsed  ?? null,
-        aiGeneratedAt:      plan.aiGenerationMeta?.generatedAt      ?? null,
+        patientId:        plan.patientId,
+        consultationId:   plan.consultationId ?? null,
+        objectiveType:    'general',
+        startDate:        plan.startDate.toISOString().split('T')[0]!,
+        endDate:          plan.endDate.toISOString().split('T')[0]!,
+        objectives:       plan.objectives,
+        dailyKcalTarget:  plan.macroTargets.kcal,
+        proteinGTarget:   plan.macroTargets.proteinG,
+        carbsGTarget:     plan.macroTargets.carbsG,
+        fatGTarget:       plan.macroTargets.fatG,
+        proteinPct:       plan.macroTargets.proteinPct,
+        carbsPct:         plan.macroTargets.carbsPct,
+        fatPct:           plan.macroTargets.fatPct,
+        totalDailyKcal:   plan.totalDailyKcal,
+        totalProteinG:    plan.totalDailyProteinG,
+        totalCarbsG:      plan.totalDailyCarbsG,
+        totalFatG:        plan.totalDailyFatG,
+        isAiGenerated:    !!plan.aiGenerationMeta,
+        aiGenerationMeta: plan.aiGenerationMeta
+          ? {
+              model:            plan.aiGenerationMeta.model,
+              promptTokens:     plan.aiGenerationMeta.promptTokens,
+              completionTokens: plan.aiGenerationMeta.completionTokens,
+              foodSourcesUsed:  plan.aiGenerationMeta.foodSourcesUsed,
+              generatedAt:      plan.aiGenerationMeta.generatedAt.toISOString(),
+            }
+          : null,
       };
       if (plan.id) insertValues.id = plan.id;
 
@@ -106,17 +118,18 @@ export class PgDietPlanRepository implements IDietPlanRepository {
 
       const savedMeals: DietMeal[] = [];
 
-      for (const meal of plan.meals) {
+      for (const [index, meal] of plan.meals.entries()) {
         const [savedMeal] = await tx
           .insert(dietMeals)
           .values({
             dietPlanId:       savedPlan!.id,
             mealType:         meal.mealType,
+            orderIndex:       index,
             scheduledTime:    meal.scheduledTime    ?? null,
             totalKcal:        meal.totalKcal,
-            totalProteinG:    String(meal.totalProteinG),
-            totalCarbsG:      String(meal.totalCarbsG),
-            totalFatG:        String(meal.totalFatG),
+            totalProteinG:    meal.totalProteinG,
+            totalCarbsG:      meal.totalCarbsG,
+            totalFatG:        meal.totalFatG,
             nutritionistNote: meal.nutritionistNote ?? null,
           })
           .returning();
@@ -125,11 +138,11 @@ export class PgDietPlanRepository implements IDietPlanRepository {
           await tx.insert(dietMealItems).values({
             dietMealId: savedMeal!.id,
             foodId:     item.id,
-            quantityG:  String(item.quantityG),
+            quantityG:  item.quantityG,
             kcal:       item.kcal,
-            proteinG:   String(item.proteinG),
-            carbsG:     String(item.carbsG),
-            fatG:       String(item.fatG),
+            proteinG:   item.proteinG,
+            carbsG:     item.carbsG,
+            fatG:       item.fatG,
           });
         }
 
@@ -143,13 +156,13 @@ export class PgDietPlanRepository implements IDietPlanRepository {
   async update(id: string, data: Partial<DietPlan>): Promise<DietPlan> {
     const setValues: Partial<typeof dietPlans.$inferInsert> = {};
 
-    if (data.objectives         !== undefined) setValues.objectives         = data.objectives;
-    if (data.startDate          !== undefined) setValues.startDate          = data.startDate;
-    if (data.endDate            !== undefined) setValues.endDate            = data.endDate;
-    if (data.totalDailyKcal     !== undefined) setValues.totalDailyKcal     = data.totalDailyKcal;
-    if (data.totalDailyProteinG !== undefined) setValues.totalDailyProteinG = String(data.totalDailyProteinG);
-    if (data.totalDailyCarbsG   !== undefined) setValues.totalDailyCarbsG   = String(data.totalDailyCarbsG);
-    if (data.totalDailyFatG     !== undefined) setValues.totalDailyFatG     = String(data.totalDailyFatG);
+    if (data.objectives         !== undefined) setValues.objectives      = data.objectives;
+    if (data.startDate          !== undefined) setValues.startDate       = data.startDate.toISOString().split('T')[0]!;
+    if (data.endDate            !== undefined) setValues.endDate         = data.endDate.toISOString().split('T')[0]!;
+    if (data.totalDailyKcal     !== undefined) setValues.totalDailyKcal  = data.totalDailyKcal;
+    if (data.totalDailyProteinG !== undefined) setValues.totalProteinG   = data.totalDailyProteinG;
+    if (data.totalDailyCarbsG   !== undefined) setValues.totalCarbsG     = data.totalDailyCarbsG;
+    if (data.totalDailyFatG     !== undefined) setValues.totalFatG       = data.totalDailyFatG;
 
     if (Object.keys(setValues).length > 0) {
       await db.update(dietPlans).set(setValues).where(eq(dietPlans.id, id));
@@ -170,34 +183,35 @@ export class PgDietPlanRepository implements IDietPlanRepository {
     row: typeof dietPlans.$inferSelect,
     meals: DietMeal[],
   ): DietPlan {
+    const aiMeta = row.aiGenerationMeta;
     return {
       id:             row.id,
       patientId:      row.patientId,
       consultationId: row.consultationId ?? undefined,
-      startDate:      row.startDate,
-      endDate:        row.endDate,
+      startDate:      new Date(row.startDate),
+      endDate:        new Date(row.endDate),
       objectives:     row.objectives,
       macroTargets: {
-        kcal:       row.targetKcal,
-        proteinG:   row.targetProteinG,
-        carbsG:     row.targetCarbsG,
-        fatG:       row.targetFatG,
-        proteinPct: row.targetProteinPct,
-        carbsPct:   row.targetCarbsPct,
-        fatPct:     row.targetFatPct,
+        kcal:       row.dailyKcalTarget,
+        proteinG:   row.proteinGTarget,
+        carbsG:     row.carbsGTarget,
+        fatG:       row.fatGTarget,
+        proteinPct: row.proteinPct,
+        carbsPct:   row.carbsPct,
+        fatPct:     row.fatPct,
       },
       meals,
-      totalDailyKcal:     row.totalDailyKcal,
-      totalDailyProteinG: parseFloat(row.totalDailyProteinG),
-      totalDailyCarbsG:   parseFloat(row.totalDailyCarbsG),
-      totalDailyFatG:     parseFloat(row.totalDailyFatG),
-      aiGenerationMeta: row.aiModel
+      totalDailyKcal:     row.totalDailyKcal     ?? 0,
+      totalDailyProteinG: row.totalProteinG ?? 0,
+      totalDailyCarbsG:   row.totalCarbsG   ?? 0,
+      totalDailyFatG:     row.totalFatG     ?? 0,
+      aiGenerationMeta: aiMeta
         ? {
-            model:            row.aiModel,
-            promptTokens:     row.aiPromptTokens     ?? 0,
-            completionTokens: row.aiCompletionTokens ?? 0,
-            foodSourcesUsed:  row.aiFoodSources       ?? [],
-            generatedAt:      row.aiGeneratedAt        ?? new Date(),
+            model:            aiMeta.model,
+            promptTokens:     aiMeta.promptTokens,
+            completionTokens: aiMeta.completionTokens,
+            foodSourcesUsed:  aiMeta.foodSourcesUsed,
+            generatedAt:      new Date(aiMeta.generatedAt),
           }
         : undefined,
     };
@@ -206,34 +220,36 @@ export class PgDietPlanRepository implements IDietPlanRepository {
   private toFoodWithQuantity(
     food: typeof foods.$inferSelect,
     item: typeof dietMealItems.$inferSelect,
+    source: typeof foodSources.$inferSelect | null,
   ): FoodWithQuantity {
     return {
-      id:           food.id,
-      externalId:   food.externalId ?? undefined,
-      namePt:       food.namePt,
-      nameEn:       food.nameEn    ?? undefined,
-      category:     food.category,
-      subcategory:  food.subcategory ?? undefined,
-      tags:         food.tags ?? [],
+      id:            food.id,
+      externalId:    source?.externalId ?? undefined,
+      namePt:        food.namePt,
+      nameEn:        food.nameEn    ?? undefined,
+      category:      food.category,
+      subcategory:   food.subcategory ?? undefined,
+      tags:          [],
       primarySource: food.primarySource,
       nutrients: {
-        kcalPer100g: parseFloat(food.kcalPer100g),
-        proteinG:    parseFloat(food.proteinG),
-        carbsG:      parseFloat(food.carbsG),
-        fatG:        parseFloat(food.fatG),
-        fiberG:      food.fiberG    != null ? parseFloat(food.fiberG)    : undefined,
-        sodiumMg:    food.sodiumMg  != null ? parseFloat(food.sodiumMg)  : undefined,
-        calciumMg:   food.calciumMg != null ? parseFloat(food.calciumMg) : undefined,
-        ironMg:      food.ironMg    != null ? parseFloat(food.ironMg)    : undefined,
-        zincMg:      food.zincMg    != null ? parseFloat(food.zincMg)    : undefined,
-        vitCMg:      food.vitCMg    != null ? parseFloat(food.vitCMg)    : undefined,
-        vitB12Mcg:   food.vitB12Mcg != null ? parseFloat(food.vitB12Mcg) : undefined,
+        kcalPer100g: source?.kcalPer100g ?? 0,
+        proteinG:    source?.proteinG    ?? 0,
+        carbsG:      source?.carbsG      ?? 0,
+        fatG:        source?.fatG        ?? 0,
+        fiberG:      source?.fiberG      ?? undefined,
+        sodiumMg:    source?.extraNutrients?.sodiumMg   ?? undefined,
+        calciumMg:   source?.extraNutrients?.calciumMg  ?? undefined,
+        ironMg:      source?.extraNutrients?.ironMg     ?? undefined,
+        zincMg:      source?.extraNutrients?.zincMg     ?? undefined,
+        vitCMg:      source?.extraNutrients?.vitCMg     ?? undefined,
+        vitB12Mcg:   source?.extraNutrients?.vitB12Mcg  ?? undefined,
       },
-      quantityG: parseFloat(item.quantityG),
+      quantityG: item.quantityG,
       kcal:      item.kcal,
-      proteinG:  parseFloat(item.proteinG),
-      carbsG:    parseFloat(item.carbsG),
-      fatG:      parseFloat(item.fatG),
+      proteinG:  item.proteinG,
+      carbsG:    item.carbsG,
+      fatG:      item.fatG,
     };
   }
 }
+

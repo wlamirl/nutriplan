@@ -92,7 +92,7 @@ export const users = pgTable('users', {
   email:        varchar('email', { length: 255 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   role:         userRoleEnum('role').notNull(),
-  name:         varchar('name', { length: 255 }).notNull(),
+  name:         varchar('name', { length: 255 }),        // nullable: adicionado sem NOT NULL na migration 0008
   avatarUrl:    varchar('avatar_url', { length: 500 }),
   isActive:     boolean('is_active').notNull().default(true),
   lastLoginAt:  timestamp('last_login_at', { withTimezone: true }),
@@ -111,8 +111,10 @@ export const users = pgTable('users', {
 export const nutritionists = pgTable('nutritionists', {
   id:           uuid('id').primaryKey().defaultRandom(),
   userId:       uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  crn:          varchar('crn', { length: 20 }).notNull(),   // Conselho Regional de Nutrição
-  specialty:    varchar('specialty', { length: 100 }),      // ex: "Nutrição esportiva"
+  name:         varchar('name', { length: 255 }).notNull(),  // mantido por compatibilidade com migrations existentes
+  crn:          varchar('crn', { length: 20 }),              // nullable no DB (migration 0001 criou sem NOT NULL)
+  phone:        text('phone'),                               // mantido por compatibilidade com migrations existentes
+  specialty:    varchar('specialty', { length: 100 }),       // ex: "Nutrição esportiva"
   bio:          text('bio'),
   phoneNumber:  varchar('phone_number', { length: 20 }),
   createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

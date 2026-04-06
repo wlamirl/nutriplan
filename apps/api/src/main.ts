@@ -1,10 +1,10 @@
-import { config } from 'dotenv';
-import { resolve } from 'path';
-config({ path: resolve(__dirname, '../../../.env') });
+import './env'; // DEVE ser o primeiro import — carrega .env antes de qualquer outro módulo
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { errorHandler } from './http/middlewares/errorHandler';
 import { authRoutes }     from './http/routes/auth.routes';
 import { foodRoutes }     from './http/routes/food.routes';
@@ -19,13 +19,50 @@ const app = Fastify({
         ? { target: 'pino-pretty', options: { colorize: true } }
         : undefined,
   },
+  // Permite keywords OpenAPI (ex: "example") nos schemas de rota sem rejeitar
+  ajv: {
+    customOptions: {
+      strict:           'log',
+      keywords:         ['example'],
+      allErrors:        true,
+    },
+  },
 });
 
 async function bootstrap(): Promise<void> {
   // ─── Security plugins ──────────────────────────────────────────────────────
-  await app.register(helmet);
+  await app.register(helmet, {
+    // Swagger UI carrega scripts inline — desabilitar CSP em desenvolvimento
+    contentSecurityPolicy: process.env.NODE_ENV === 'production',
+  });
   await app.register(cors, {
     origin: process.env.NODE_ENV === 'production' ? false : true,
+  });
+
+  // ─── OpenAPI / Swagger ─────────────────────────────────────────────────────
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title:       'NutriPlan API',
+        description: 'API para geração de planos alimentares com IA (RAG + Claude)',
+        version:     '1.0.0',
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type:         'http',
+            scheme:       'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+      security: [{ bearerAuth: [] }],
+    },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig:    { docExpansion: 'list', deepLinking: true },
   });
 
   // ─── Auth plugin ───────────────────────────────────────────────────────────

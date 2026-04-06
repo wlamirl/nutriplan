@@ -9,6 +9,7 @@ import { PgNutritionistRepository } from '../../infrastructure/repositories/PgUs
 import { ClaudeAIService }          from '../../infrastructure/ai/ClaudeAIService';
 import { ClaudeEmbeddingService }   from '../../infrastructure/ai/ClaudeEmbeddingService';
 import { authenticate }             from '../middlewares/authenticate';
+import { db }                       from '../../infrastructure/database/db';
 
 // ─── In-memory rate limiter: 10 req/min per nutritionist ─────────────────────
 
@@ -44,7 +45,7 @@ export async function dietPlanRoutes(app: FastifyInstance): Promise<void> {
     ?? (() => { throw new Error('ANTHROPIC_API_KEY não definido'); })();
 
   const patientRepo      = new PgPatientRepository();
-  const foodRepo         = new PgFoodRepository();
+  const foodRepo         = new PgFoodRepository(db);
   const dietPlanRepo     = new PgDietPlanRepository();
   const nutritionistRepo = new PgNutritionistRepository();
   const aiService        = new ClaudeAIService(apiKey);
@@ -68,7 +69,40 @@ export async function dietPlanRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /diet-plans/generate ───────────────────────────────────────────
 
-  app.post('/generate', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/generate', {
+    schema: {
+      tags:    ['Diet Plans'],
+      summary: 'Gerar plano alimentar com IA (RAG + Claude)',
+      body: {
+        type: 'object',
+        required: ['patientId', 'objectives'],
+        properties: {
+          patientId:        { type: 'string', format: 'uuid' },
+          consultationId:   { type: 'string', format: 'uuid' },
+          objectives:       { type: 'string', minLength: 5, maxLength: 500, example: 'Perda de peso saudável' },
+          customKcalTarget: { type: 'integer', minimum: 800, maximum: 5000 },
+          macroSplit: {
+            type: 'object',
+            properties: {
+              proteinPct: { type: 'number' },
+              carbsPct:   { type: 'number' },
+              fatPct:     { type: 'number' },
+            },
+          },
+          durationDays: { type: 'integer', minimum: 7, maximum: 90, default: 30 },
+          mealTypes:    { type: 'array', items: { type: 'string', enum: ['breakfast','morning_snack','lunch','afternoon_snack','dinner','supper'] } },
+          extraContext: { type: 'string', maxLength: 1000 },
+        },
+      },
+      response: {
+        201: { description: 'Plano gerado',      type: 'object', properties: { data: { type: 'object' }, meta: { type: 'object' } } },
+        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' } } },
+        422: { description: 'Erro de domínio',   type: 'object', properties: { error: { type: 'string' } } },
+        429: { description: 'Rate limit',        type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const parsed = GenerateDietPlanSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -109,7 +143,18 @@ export async function dietPlanRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /diet-plans/:id ──────────────────────────────────────────────────
 
-  app.get('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:    ['Diet Plans'],
+      summary: 'Buscar plano alimentar por ID',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Plano alimentar', type: 'object', properties: { data: { type: 'object' } } },
+        404: { description: 'Não encontrado',  type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const plan = await dietPlanRepo.findById(id);
     if (!plan) throw AppError.notFound('Plano alimentar');
@@ -124,7 +169,18 @@ export async function dietPlanRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── PATCH /diet-plans/:id ────────────────────────────────────────────────
 
-  app.patch('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.patch('/:id', {
+    schema: {
+      tags:    ['Diet Plans'],
+      summary: 'Atualizar plano alimentar',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Plano atualizado',  type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = UpdateDietPlanSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -149,7 +205,18 @@ export async function dietPlanRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── DELETE /diet-plans/:id ───────────────────────────────────────────────
 
-  app.delete('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.delete('/:id', {
+    schema: {
+      tags:    ['Diet Plans'],
+      summary: 'Remover plano alimentar',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        204: { description: 'Removido com sucesso', type: 'null' },
+        404: { description: 'Não encontrado',       type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const plan = await dietPlanRepo.findById(id);
     if (!plan) throw AppError.notFound('Plano alimentar');

@@ -27,7 +27,17 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /patients ───────────────────────────────────────────────────────
 
-  app.post('/', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/', {
+    schema: {
+      tags:    ['Patients'],
+      summary: 'Criar paciente',
+      response: {
+        201: { description: 'Paciente criado',    type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação',  type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const parsed = CreatePatientSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -54,7 +64,16 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /patients ────────────────────────────────────────────────────────
 
-  app.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/', {
+    schema: {
+      tags:    ['Patients'],
+      summary: 'Listar pacientes do nutricionista',
+      response: {
+        200: { description: 'Lista de pacientes', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const nutritionistId = await getNutritionistId(request.user.sub);
     const list = await patientRepo.findByNutritionistId(nutritionistId);
     return reply.send({ data: list, meta: { total: list.length } });
@@ -62,7 +81,19 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /patients/:id ────────────────────────────────────────────────────
 
-  app.get('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/:id', {
+    schema: {
+      tags:    ['Patients'],
+      summary: 'Buscar paciente por ID',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Paciente',         type: 'object', properties: { data: { type: 'object' } } },
+        404: { description: 'Não encontrado',   type: 'object', properties: { error: { type: 'string' } } },
+        403: { description: 'Sem permissão',    type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const patient = await patientRepo.findById(id);
     if (!patient) throw AppError.notFound('Paciente');
@@ -75,7 +106,18 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── PATCH /patients/:id ──────────────────────────────────────────────────
 
-  app.patch('/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.patch('/:id', {
+    schema: {
+      tags:    ['Patients'],
+      summary: 'Atualizar paciente',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Paciente atualizado', type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação',   type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = UpdatePatientSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -106,7 +148,18 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /patients/:id/consultations ─────────────────────────────────────
 
-  app.post('/:id/consultations', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/:id/consultations', {
+    schema: {
+      tags:    ['Consultations'],
+      summary: 'Adicionar consulta ao paciente',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        201: { description: 'Consulta criada',   type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = AddConsultationSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -119,7 +172,7 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
     const nutritionistId = await getNutritionistId(request.user.sub);
     if (patient.nutritionistId !== nutritionistId) throw AppError.forbidden();
 
-    const consultation = await consultationRepo.create(id, {
+    const consultation = await consultationRepo.create(id, nutritionistId, {
       date:         parsed.data.date ? new Date(parsed.data.date) : undefined,
       weightKg:     parsed.data.weightKg,
       bodyFatPct:   parsed.data.bodyFatPct,
@@ -132,7 +185,17 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /patients/:id/consultations ──────────────────────────────────────
 
-  app.get('/:id/consultations', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/:id/consultations', {
+    schema: {
+      tags:    ['Consultations'],
+      summary: 'Listar consultas do paciente',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Lista de consultas', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const patient = await patientRepo.findById(id);
@@ -147,7 +210,17 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /patients/:id/diet-plans ─────────────────────────────────────────
 
-  app.get('/:id/diet-plans', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/:id/diet-plans', {
+    schema: {
+      tags:    ['Diet Plans'],
+      summary: 'Listar planos alimentares do paciente',
+      params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      response: {
+        200: { description: 'Lista de planos', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const patient = await patientRepo.findById(id);

@@ -3,7 +3,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: nutriplan-postgres
     ports:
-      - "5432:5432"
+      - '5432:5432'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d nutriplan"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d nutriplan']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,14 +20,77 @@ services:
     image: redis:7-alpine
     container_name: nutriplan-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # ─── API interna ─────────────────────────────────────────────────────────
+  # Não exposta diretamente — acessada apenas pelo gateway internamente.
+  # Em desenvolvimento, a porta 3000 é exposta para testar sem o gateway.
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - '3000:3000' # dev: acesso direto (remover em produção)
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      DATABASE_URL: 'postgresql://postgres:postgres@postgres:5432/nutriplan'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      JWT_SECRET: '${JWT_SECRET}'
+      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-7d}'
+      ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY}'
+      USDA_API_KEY: '${USDA_API_KEY}'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Gateway ─────────────────────────────────────────────────────────────
+  # Ponto de entrada único para web e mobile.
+  # Web aponta para http://localhost:8080, mobile para o IP da máquina na mesma porta.
+  gateway:
+    build:
+      context: .
+      dockerfile: apps/gateway/Dockerfile
+    ports:
+      - '8080:8080'
+    environment:
+      NODE_ENV: development
+      GATEWAY_PORT: '8080'
+      API_URL: 'http://api:3000'
+      JWT_SECRET: '${JWT_SECRET}'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      # Origens permitidas (CORS) para o front-end web.
+      # Em produção: CORS_ORIGINS=https://app.nutriplan.com
+      CORS_ORIGINS: '${CORS_ORIGINS:-http://localhost:5173,http://localhost:3001}'
+      # Rate limit para geração de dietas (IA)
+      AI_RATE_LIMIT_MAX: '10'
+      AI_RATE_LIMIT_WINDOW: '60'
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:8080/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:

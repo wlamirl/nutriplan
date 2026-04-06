@@ -15,7 +15,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /auth/register ────────────────────────────────────────────────────
 
-  app.post('/register', async (request, reply) => {
+  app.post('/register', {
+    schema: {
+      tags:        ['Auth'],
+      summary:     'Cadastrar nutricionista',
+      security:    [],
+      body: {
+        type: 'object',
+        required: ['name', 'email', 'password'],
+        properties: {
+          name:     { type: 'string', example: 'Ana Paula' },
+          email:    { type: 'string', format: 'email', example: 'ana@clinica.com' },
+          password: { type: 'string', minLength: 8, example: 'senha1234' },
+        },
+      },
+      response: {
+        201: { description: 'Nutricionista criado', type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação',   type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
+      },
+    },
+  }, async (request, reply) => {
     const parsed = RegisterSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -34,7 +53,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── POST /auth/login ───────────────────────────────────────────────────────
 
-  app.post('/login', async (request, reply) => {
+  app.post('/login', {
+    schema: {
+      tags:     ['Auth'],
+      summary:  'Login de nutricionista',
+      security: [],
+      body: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email:    { type: 'string', format: 'email', example: 'ana@clinica.com' },
+          password: { type: 'string', example: 'senha1234' },
+        },
+      },
+      response: {
+        200: { description: 'Login bem-sucedido',   type: 'object', properties: { data: { type: 'object' } } },
+        400: { description: 'Erro de validação',    type: 'object', properties: { error: { type: 'string' } } },
+        401: { description: 'Credenciais inválidas', type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request, reply) => {
     const parsed = LoginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
@@ -61,7 +99,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── GET /auth/me ───────────────────────────────────────────────────────────
 
-  app.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/me', {
+    schema: {
+      tags:    ['Auth'],
+      summary: 'Dados do usuário autenticado',
+      response: {
+        200: { description: 'Usuário autenticado', type: 'object', properties: { data: { type: 'object' } } },
+        401: { description: 'Não autenticado',     type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+    preHandler: [authenticate],
+  }, async (request, reply) => {
     return reply.send({ data: request.user });
   });
 }

@@ -26,9 +26,10 @@ export function errorHandler(
   }
 
   // Erros inesperados → 500 (sem stack trace em produção)
+  reply.log.error({ err: error }, 'Unhandled error');
   const isProduction = process.env.NODE_ENV === 'production';
   reply.status(500).send({
     error: 'Erro interno do servidor',
-    ...(isProduction ? {} : { details: error.message }),
+    ...(isProduction ? {} : { details: error.message, stack: error.stack }),
   });
 }

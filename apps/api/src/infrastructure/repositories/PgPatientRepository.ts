@@ -48,7 +48,7 @@ export class PgPatientRepository implements IPatientRepository {
       name:                patient.name,
       birthDate:           patient.birthDate.toISOString().split('T')[0]!,
       sex:                 patient.sex,
-      heightCm:            String(patient.heightCm),
+      heightCm:            patient.heightCm,
       activityLevel:       patient.activityLevel,
       culturalPreferences: patient.culturalPreferences ?? null,
       routineNotes:        patient.routineNotes ?? null,
@@ -83,7 +83,7 @@ export class PgPatientRepository implements IPatientRepository {
     if (data.name              !== undefined) setValues.name              = data.name;
     if (data.birthDate         !== undefined) setValues.birthDate         = data.birthDate.toISOString().split('T')[0]!;
     if (data.sex               !== undefined) setValues.sex               = data.sex;
-    if (data.heightCm          !== undefined) setValues.heightCm          = String(data.heightCm);
+    if (data.heightCm          !== undefined) setValues.heightCm          = data.heightCm;
     if (data.activityLevel     !== undefined) setValues.activityLevel     = data.activityLevel;
     if (data.culturalPreferences !== undefined) setValues.culturalPreferences = data.culturalPreferences ?? null;
     if (data.routineNotes      !== undefined) setValues.routineNotes      = data.routineNotes ?? null;
@@ -124,7 +124,7 @@ export class PgPatientRepository implements IPatientRepository {
       name:           row.name,
       birthDate:      new Date(row.birthDate),
       sex:            row.sex,
-      heightCm:       parseFloat(row.heightCm),
+      heightCm:       row.heightCm,
       activityLevel:  row.activityLevel,
       culturalPreferences: row.culturalPreferences ?? undefined,
       routineNotes:        row.routineNotes ?? undefined,
@@ -137,10 +137,10 @@ export class PgPatientRepository implements IPatientRepository {
       lastConsultation: lastConsultationRow
         ? {
             id:           lastConsultationRow.id,
-            date:         lastConsultationRow.date,
-            weightKg:     parseFloat(lastConsultationRow.weightKg),
-            bodyFatPct:   lastConsultationRow.bodyFatPct   != null ? parseFloat(lastConsultationRow.bodyFatPct)   : undefined,
-            muscleMassKg: lastConsultationRow.muscleMassKg != null ? parseFloat(lastConsultationRow.muscleMassKg) : undefined,
+            date:         new Date(lastConsultationRow.date),
+            weightKg:     lastConsultationRow.weightKg,
+            bodyFatPct:   lastConsultationRow.bodyFatPct   ?? undefined,
+            muscleMassKg: lastConsultationRow.muscleMassKg ?? undefined,
             notes:        lastConsultationRow.notes ?? undefined,
           }
         : undefined,

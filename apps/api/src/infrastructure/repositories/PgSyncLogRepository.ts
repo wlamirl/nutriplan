@@ -3,12 +3,29 @@ import { db } from '../database/db';
 import { syncLogs } from '../database/schema';
 import { ISyncLogRepository, SyncLogEntry, FoodSource } from '@nutriplan/domain';
 
+// ─── Status mapping ───────────────────────────────────────────────────────────
+// Domain: 'pending' | 'running' | 'completed' | 'failed'
+// DB:     'running' | 'success' | 'partial'   | 'failed'
+
+type DbStatus = 'running' | 'success' | 'partial' | 'failed';
+
+function toDbStatus(status: SyncLogEntry['status']): DbStatus {
+  if (status === 'pending' || status === 'running') return 'running';
+  if (status === 'completed') return 'success';
+  return 'failed';
+}
+
+function toDomainStatus(status: DbStatus): SyncLogEntry['status'] {
+  if (status === 'success' || status === 'partial') return 'completed';
+  return status; // 'running' | 'failed'
+}
+
 export class PgSyncLogRepository implements ISyncLogRepository {
 
   async create(source: FoodSource): Promise<SyncLogEntry> {
     const rows = await db
       .insert(syncLogs)
-      .values({ source, status: 'pending' })
+      .values({ source, status: 'running' })
       .returning();
     return this.toDomain(rows[0]!);
   }
@@ -20,13 +37,12 @@ export class PgSyncLogRepository implements ISyncLogRepository {
     const rows = await db
       .update(syncLogs)
       .set({
-        ...(data.status          != null && { status:         data.status }),
-        ...(data.totalProcessed  != null && { totalProcessed: data.totalProcessed }),
-        ...(data.totalInserted   != null && { totalInserted:  data.totalInserted }),
-        ...(data.totalUpdated    != null && { totalUpdated:   data.totalUpdated }),
-        ...(data.totalFailed     != null && { totalFailed:    data.totalFailed }),
-        ...(data.errorMessage    != null && { errorMessage:   data.errorMessage }),
-        ...(data.finishedAt      != null && { finishedAt:     data.finishedAt }),
+        ...(data.status         != null && { status:           toDbStatus(data.status) }),
+        ...(data.totalProcessed != null && { recordsProcessed: data.totalProcessed }),
+        ...(data.totalInserted  != null && { recordsUpserted:  data.totalInserted }),
+        ...(data.totalFailed    != null && { recordsFailed:    data.totalFailed }),
+        ...(data.errorMessage   != null && { errorMessage:     data.errorMessage }),
+        ...(data.finishedAt     != null && { finishedAt:       data.finishedAt }),
       })
       .where(eq(syncLogs.id, id))
       .returning();
@@ -49,15 +65,15 @@ export class PgSyncLogRepository implements ISyncLogRepository {
     return {
       id:             row.id,
       source:         row.source,
-      status:         row.status,
-      totalProcessed: row.totalProcessed ?? 0,
-      totalInserted:  row.totalInserted  ?? 0,
-      totalUpdated:   row.totalUpdated   ?? 0,
-      totalFailed:    row.totalFailed    ?? 0,
+      status:         toDomainStatus(row.status),
+      totalProcessed: row.recordsProcessed,
+      totalInserted:  row.recordsUpserted,
+      totalUpdated:   row.recordsSkipped,   // closest available column
+      totalFailed:    row.recordsFailed,
       errorMessage:   row.errorMessage   ?? undefined,
       startedAt:      row.startedAt,
       finishedAt:     row.finishedAt     ?? undefined,
-      createdAt:      row.createdAt,
+      createdAt:      row.startedAt,        // schema has no separate createdAt
     };
   }
 }
