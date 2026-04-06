@@ -50,6 +50,20 @@
       "when": 1775088000000,
       "tag": "0010_foods_view",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775088001000,
+      "tag": "0011_sync_logs_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775088002000,
+      "tag": "0012_foods_legacy_defaults",
+      "breakpoints": true
     }
   ]
 }

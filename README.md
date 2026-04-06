@@ -18,7 +18,7 @@
 
   Pronto. Com a API rodando (pnpm --filter api dev), acesse:
 
-http://localhost:3000/docs
+# http://localhost:3000/docs
 
 O que foi feito:
 
@@ -40,3 +40,33 @@ pnpm --filter @nutriplan/shared build && pnpm --filter @nutriplan/domain build
 
 # Dev da API:
 pnpm --filter api dev
+
+# POST /foods/similar
+http://0.0.0.0:3000/foods/similar
+{
+  "queryText": "alimentos ricos em proteína",
+  "topK": 10
+}
+
+# POST /foods/sync
+Authorization: Bearer <token-admin>
+Content-Type: application/json
+
+{ "source": "USDA" }
+
+O adaptador TBCA lê um arquivo JSON local que precisa ser baixado manualmente do site da TBCA. O USDA usa a API (requer USDA_API_KEY) e o OFF usa a API pública do Open Food Facts.
+
+Opções:
+
+USDA (mais fácil) — só precisa de uma chave gratuita em fdc.nal.usda.gov. Adicione no .env:
+
+
+USDA_API_KEY=DEMO_KEY
+E dispare com POST /foods/sync com body { "source": "USDA" }.
+
+OFF (Open Food Facts) — sem chave, dispare com body { "source": "OFF" }.
+
+TBCA — baixe o arquivo JSON em tbca.insa.ufrj.br, salve em data/tbca.json na raiz do projeto, e configure:
+TBCA_JSON_PATH=data/tbca.json
+
+

@@ -63,9 +63,9 @@ const vector = customType<{ data: number[]; driverData: string }>({
 export const foodSourceEnum = pgEnum('food_source', ['TBCA', 'USDA', 'OFF']);
 
 export const syncStatusEnum = pgEnum('sync_status', [
+  'pending',
   'running',
-  'success',
-  'partial',    // concluído com erros em alguns registros
+  'completed',
   'failed',
 ]);
 

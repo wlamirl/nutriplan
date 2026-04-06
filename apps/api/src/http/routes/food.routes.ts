@@ -89,6 +89,21 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:    ['Foods'],
       summary: 'Busca semântica de alimentos por similaridade (RAG)',
+      body: {
+        type: 'object',
+        required: ['queryText'],
+        properties: {
+          queryText:    { type: 'string' },
+          topK:         { type: 'integer', default: 20 },
+          restrictions: {
+            type: 'object',
+            properties: {
+              excludeTags:  { type: 'array', items: { type: 'string' } },
+              excludeNames: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
       response: {
         200: {
           description: 'Alimentos similares',
@@ -132,13 +147,19 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:    ['Foods'],
       summary: 'Disparar sincronização manual de alimentos (admin)',
+      body: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', enum: ['TBCA', 'USDA', 'OFF'] },
+        },
+      },
       response: {
         202: { description: 'Sync agendado', type: 'object', properties: { data: { type: 'object' } } },
       },
     },
     preHandler: [requireAdmin],
   }, async (request, reply) => {
-    const parsed = TriggerSyncSchema.safeParse(request.body);
+    const parsed = TriggerSyncSchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Erro de validação', details: parsed.error.flatten() });
     }

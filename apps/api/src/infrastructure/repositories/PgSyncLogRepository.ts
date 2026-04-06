@@ -5,19 +5,16 @@ import { ISyncLogRepository, SyncLogEntry, FoodSource } from '@nutriplan/domain'
 
 // ─── Status mapping ───────────────────────────────────────────────────────────
 // Domain: 'pending' | 'running' | 'completed' | 'failed'
-// DB:     'running' | 'success' | 'partial'   | 'failed'
+// DB:     'pending' | 'running' | 'completed' | 'failed'  (mesmos valores)
 
-type DbStatus = 'running' | 'success' | 'partial' | 'failed';
+type DbStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 function toDbStatus(status: SyncLogEntry['status']): DbStatus {
-  if (status === 'pending' || status === 'running') return 'running';
-  if (status === 'completed') return 'success';
-  return 'failed';
+  return status;
 }
 
 function toDomainStatus(status: DbStatus): SyncLogEntry['status'] {
-  if (status === 'success' || status === 'partial') return 'completed';
-  return status; // 'running' | 'failed'
+  return status;
 }
 
 export class PgSyncLogRepository implements ISyncLogRepository {

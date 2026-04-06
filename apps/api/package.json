@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
-    "db:seed": "DOTENV_CONFIG_PATH=../../.env tsx --require dotenv/config src/seeds/foods.seed.ts"
+    "db:seed": "DOTENV_CONFIG_PATH=../../.env tsx --require dotenv/config src/seeds/foods.seed.ts",
+    "seed:admin": "tsx src/seeds/admin.seed.ts",
+    "seed:reset-admin": "tsx src/seeds/reset-admin.seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
