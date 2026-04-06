@@ -43,11 +43,6 @@ export class PgFoodRepository implements IFoodRepository {
     // Para geração de dietas: priorizamos recall (mais alimentos relevantes)
     await this.db.execute(sql`SET LOCAL ivfflat.probes = 10`);
 
-    // Também configurar o modelo de embedding para a view foods_with_nutrients
-    await this.db.execute(
-      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
-    );
-
     // Construir filtros condicionais
     const filters: SQL[] = [];
 
@@ -109,10 +104,6 @@ export class PgFoodRepository implements IFoodRepository {
   // ─── findById ──────────────────────────────────────────────────────────────
 
   async findById(id: string): Promise<Food | null> {
-    await this.db.execute(
-      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
-    );
-
     const rows = await this.db.execute<FoodRow>(sql`
       SELECT *, NULL::float AS similarity_score
       FROM foods_with_nutrients
@@ -127,10 +118,6 @@ export class PgFoodRepository implements IFoodRepository {
   // Busca textual usando trigrama (pg_trgm) para tolerância a erros de digitação
 
   async findByName(name: string): Promise<Food[]> {
-    await this.db.execute(
-      sql`SET LOCAL app.embedding_model = ${EMBEDDING_MODEL}`
-    );
-
     const rows = await this.db.execute<FoodRow>(sql`
       SELECT
         fwn.*,

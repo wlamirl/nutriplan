@@ -13,7 +13,7 @@ describe('RegisterNutritionistUseCase', () => {
 
   const mockUser: User = {
     id: 'user-1',
-    email: 'ana@clinica.com',
+    email: 'ana@teste.com',
     passwordHash: 'hashed-pw',
     role: 'nutritionist',
     createdAt: new Date(),
@@ -53,7 +53,7 @@ describe('RegisterNutritionistUseCase', () => {
 
     const result = await useCase.execute({
       name:     'Ana Paula',
-      email:    'ana@clinica.com',
+      email:    'ana@teste.com',
       password: 'senha123',
       crn:      'CRN-3 12345',
     });
@@ -61,7 +61,7 @@ describe('RegisterNutritionistUseCase', () => {
     expect(result).toEqual({
       userId:         'user-1',
       nutritionistId: 'nutri-1',
-      email:          'ana@clinica.com',
+      email:          'ana@teste.com',
       name:           'Ana Paula',
     });
   });
@@ -72,7 +72,7 @@ describe('RegisterNutritionistUseCase', () => {
     vi.mocked(userRepo.create).mockResolvedValue(mockUser);
     vi.mocked(nutritionistRepo.create).mockResolvedValue(mockNutritionist);
 
-    await useCase.execute({ name: 'Ana', email: 'ana@clinica.com', password: 'senha123' });
+    await useCase.execute({ name: 'Ana', email: 'ana@teste.com', password: 'senha123' });
 
     expect(passwordHasher.hash).toHaveBeenCalledWith('senha123');
     expect(userRepo.create).toHaveBeenCalledWith(
@@ -84,7 +84,7 @@ describe('RegisterNutritionistUseCase', () => {
     vi.mocked(userRepo.findByEmail).mockResolvedValue(mockUser);
 
     await expect(
-      useCase.execute({ name: 'Ana', email: 'ana@clinica.com', password: 'senha123' })
+      useCase.execute({ name: 'Ana', email: 'ana@teste.com', password: 'senha123' })
     ).rejects.toThrow(new DomainError('E-mail já cadastrado'));
 
     expect(passwordHasher.hash).not.toHaveBeenCalled();
@@ -98,7 +98,7 @@ describe('RegisterNutritionistUseCase', () => {
     vi.mocked(userRepo.create).mockResolvedValue(mockUser);
     vi.mocked(nutritionistRepo.create).mockResolvedValue(mockNutritionist);
 
-    await useCase.execute({ name: 'Ana', email: 'ana@clinica.com', password: 'senha123' });
+    await useCase.execute({ name: 'Ana', email: 'ana@teste.com', password: 'senha123' });
 
     expect(nutritionistRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', name: 'Ana' })

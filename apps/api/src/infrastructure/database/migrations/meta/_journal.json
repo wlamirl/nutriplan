@@ -43,6 +43,13 @@
       "when": 1775001601000,
       "tag": "0009_update_foods_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775088000000,
+      "tag": "0010_foods_view",
+      "breakpoints": true
     }
   ]
 }

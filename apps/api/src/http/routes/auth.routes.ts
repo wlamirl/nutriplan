@@ -25,13 +25,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         required: ['name', 'email', 'password'],
         properties: {
           name:     { type: 'string', example: 'Ana Paula' },
-          email:    { type: 'string', format: 'email', example: 'ana@clinica.com' },
+          email:    { type: 'string', format: 'email', example: 'ana@teste.com' },
           password: { type: 'string', minLength: 8, example: 'senha1234' },
         },
       },
       response: {
-        201: { description: 'Nutricionista criado', type: 'object', properties: { data: { type: 'object' } } },
-        400: { description: 'Erro de validação',   type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
+        201: {
+          description: 'Nutricionista criado',
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                userId:         { type: 'string' },
+                nutritionistId: { type: 'string' },
+                email:          { type: 'string' },
+                name:           { type: 'string' },
+                token:          { type: 'string' },
+              },
+            },
+          },
+        },
+        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
       },
     },
   }, async (request, reply) => {
@@ -62,13 +77,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         type: 'object',
         required: ['email', 'password'],
         properties: {
-          email:    { type: 'string', format: 'email', example: 'ana@clinica.com' },
+          email:    { type: 'string', format: 'email', example: 'ana@teste.com' },
           password: { type: 'string', example: 'senha1234' },
         },
       },
       response: {
-        200: { description: 'Login bem-sucedido',   type: 'object', properties: { data: { type: 'object' } } },
-        400: { description: 'Erro de validação',    type: 'object', properties: { error: { type: 'string' } } },
+        200: {
+          description: 'Login bem-sucedido',
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                userId:          { type: 'string' },
+                email:           { type: 'string' },
+                role:            { type: 'string' },
+                nutritionistId:  { type: 'string' },
+                token:           { type: 'string' },
+              },
+            },
+          },
+        },
+        400: { description: 'Erro de validação',     type: 'object', properties: { error: { type: 'string' } } },
         401: { description: 'Credenciais inválidas', type: 'object', properties: { error: { type: 'string' } } },
       },
     },
@@ -104,8 +134,21 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       tags:    ['Auth'],
       summary: 'Dados do usuário autenticado',
       response: {
-        200: { description: 'Usuário autenticado', type: 'object', properties: { data: { type: 'object' } } },
-        401: { description: 'Não autenticado',     type: 'object', properties: { error: { type: 'string' } } },
+        200: {
+          description: 'Usuário autenticado',
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                sub:   { type: 'string' },
+                role:  { type: 'string' },
+                email: { type: 'string' },
+              },
+            },
+          },
+        },
+        401: { description: 'Não autenticado', type: 'object', properties: { error: { type: 'string' } } },
       },
     },
     preHandler: [authenticate],

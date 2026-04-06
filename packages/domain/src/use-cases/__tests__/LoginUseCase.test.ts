@@ -13,7 +13,7 @@ describe('LoginUseCase', () => {
 
   const mockUser: User = {
     id:           'user-1',
-    email:        'ana@clinica.com',
+    email:        'ana@teste.com',
     passwordHash: 'hashed-pw',
     role:         'nutritionist',
     createdAt:    new Date(),
@@ -49,11 +49,11 @@ describe('LoginUseCase', () => {
     vi.mocked(passwordHasher.compare).mockResolvedValue(true);
     vi.mocked(nutritionistRepo.findByUserId).mockResolvedValue(mockNutritionist);
 
-    const result = await useCase.execute({ email: 'ana@clinica.com', password: 'senha123' });
+    const result = await useCase.execute({ email: 'ana@teste.com', password: 'senha123' });
 
     expect(result).toEqual({
       userId:         'user-1',
-      email:          'ana@clinica.com',
+      email:          'ana@teste.com',
       role:           'nutritionist',
       nutritionistId: 'nutri-1',
     });
@@ -64,7 +64,7 @@ describe('LoginUseCase', () => {
     vi.mocked(userRepo.findByEmail).mockResolvedValue(null);
 
     await expect(
-      useCase.execute({ email: 'inexistente@clinica.com', password: 'senha123' })
+      useCase.execute({ email: 'inexistente@teste.com', password: 'senha123' })
     ).rejects.toThrow(new DomainError('Credenciais inválidas'));
 
     // Não deve chamar compare para não vazar timing
@@ -76,7 +76,7 @@ describe('LoginUseCase', () => {
     vi.mocked(passwordHasher.compare).mockResolvedValue(false);
 
     await expect(
-      useCase.execute({ email: 'ana@clinica.com', password: 'senha-errada' })
+      useCase.execute({ email: 'ana@teste.com', password: 'senha-errada' })
     ).rejects.toThrow(new DomainError('Credenciais inválidas'));
   });
 
@@ -85,7 +85,7 @@ describe('LoginUseCase', () => {
     vi.mocked(userRepo.findByEmail).mockResolvedValue(adminUser);
     vi.mocked(passwordHasher.compare).mockResolvedValue(true);
 
-    const result = await useCase.execute({ email: 'ana@clinica.com', password: 'senha123' });
+    const result = await useCase.execute({ email: 'ana@teste.com', password: 'senha123' });
 
     expect(result.nutritionistId).toBeUndefined();
     expect(nutritionistRepo.findByUserId).not.toHaveBeenCalled();
@@ -96,7 +96,7 @@ describe('LoginUseCase', () => {
     vi.mocked(passwordHasher.compare).mockResolvedValue(true);
     vi.mocked(nutritionistRepo.findByUserId).mockResolvedValue(null);
 
-    const result = await useCase.execute({ email: 'ana@clinica.com', password: 'senha123' });
+    const result = await useCase.execute({ email: 'ana@teste.com', password: 'senha123' });
 
     expect(result.nutritionistId).toBeUndefined();
   });

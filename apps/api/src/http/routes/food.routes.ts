@@ -14,6 +14,37 @@ import { dispatchFoodSync }    from '../../jobs/food-sync.queue';
 import type { FoodSyncJobName } from '../../jobs/food-sync.queue';
 import { db }                  from '../../infrastructure/database/db';
 
+// Schema reutilizável para um alimento na resposta
+const foodItemSchema = {
+  type: 'object',
+  properties: {
+    id:              { type: 'string' },
+    namePt:          { type: 'string' },
+    nameEn:          { type: 'string' },
+    category:        { type: 'string' },
+    subcategory:     { type: 'string' },
+    tags:            { type: 'array', items: { type: 'string' } },
+    primarySource:   { type: 'string' },
+    similarityScore: { type: 'number' },
+    nutrients: {
+      type: 'object',
+      properties: {
+        kcalPer100g: { type: 'number' },
+        proteinG:    { type: 'number' },
+        carbsG:      { type: 'number' },
+        fatG:        { type: 'number' },
+        fiberG:      { type: 'number' },
+        sodiumMg:    { type: 'number' },
+        calciumMg:   { type: 'number' },
+        ironMg:      { type: 'number' },
+        zincMg:      { type: 'number' },
+        vitCMg:      { type: 'number' },
+        vitB12Mcg:   { type: 'number' },
+      },
+    },
+  },
+} as const;
+
 export async function foodRoutes(app: FastifyInstance): Promise<void> {
   const foodRepo    = new PgFoodRepository(db);
   const syncLogRepo = new PgSyncLogRepository();
@@ -29,7 +60,14 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
       summary:     'Buscar alimentos por nome',
       querystring: { type: 'object', properties: { q: { type: 'string' }, limit: { type: 'integer', default: 20 } } },
       response: {
-        200: { description: 'Lista de alimentos', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+        200: {
+          description: 'Lista de alimentos',
+          type: 'object',
+          properties: {
+            data: { type: 'array', items: foodItemSchema },
+            meta: { type: 'object', properties: { total: { type: 'number' }, query: { type: 'string' } } },
+          },
+        },
       },
     },
     preHandler: [authenticate],
@@ -52,7 +90,14 @@ export async function foodRoutes(app: FastifyInstance): Promise<void> {
       tags:    ['Foods'],
       summary: 'Busca semântica de alimentos por similaridade (RAG)',
       response: {
-        200: { description: 'Alimentos similares', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+        200: {
+          description: 'Alimentos similares',
+          type: 'object',
+          properties: {
+            data: { type: 'array', items: foodItemSchema },
+            meta: { type: 'object', properties: { total: { type: 'number' } } },
+          },
+        },
       },
     },
     preHandler: [authenticate],
