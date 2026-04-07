@@ -31,6 +31,8 @@ export interface Consultation {
 export interface Patient {
   id: string;
   nutritionistId: string;
+  /** ID do usuário vinculado — preenchido quando o paciente tem acesso ao app mobile */
+  userId?: string;
   name: string;
   birthDate: Date;
   sex: Sex;

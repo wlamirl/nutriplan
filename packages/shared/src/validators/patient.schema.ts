@@ -15,7 +15,7 @@ const ActivityLevelSchema = z.enum([
   'very_active',
 ]);
 
-export const CreatePatientSchema = z.object({
+const BaseCreatePatientSchema = z.object({
   name:              z.string().min(2).max(150),
   birthDate:         z.string().date(),   // ISO "YYYY-MM-DD", parsed to Date in use-case
   sex:               z.enum(['M', 'F']),
@@ -25,9 +25,17 @@ export const CreatePatientSchema = z.object({
   culturalPreferences: z.string().max(300).optional(),
   routineNotes:      z.string().max(500).optional(),
   dislikedFoods:     z.array(z.string().max(100)).max(50).default([]),
+  /** Quando fornecido, cria conta de acesso ao app mobile para o paciente */
+  email:    z.string().email().optional(),
+  password: z.string().min(8).max(100).optional(),
 });
 
-export const UpdatePatientSchema = CreatePatientSchema.partial().omit({ birthDate: true }).extend({
+export const CreatePatientSchema = BaseCreatePatientSchema.refine(
+  data => (data.email == null) === (data.password == null),
+  { message: 'email e password devem ser fornecidos juntos', path: ['password'] },
+);
+
+export const UpdatePatientSchema = BaseCreatePatientSchema.partial().omit({ birthDate: true }).extend({
   birthDate: z.string().date().optional(),
 });
 

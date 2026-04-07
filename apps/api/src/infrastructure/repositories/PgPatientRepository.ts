@@ -31,6 +31,23 @@ export class PgPatientRepository implements IPatientRepository {
     return this.toDomain(patient, restrictionRows, lastConsultationRow);
   }
 
+  async findByUserId(userId: string): Promise<Patient | null> {
+    const [patient] = await db
+      .select()
+      .from(patients)
+      .where(eq(patients.userId, userId))
+      .limit(1);
+
+    if (!patient) return null;
+
+    const restrictionRows = await db
+      .select()
+      .from(patientRestrictions)
+      .where(eq(patientRestrictions.patientId, patient.id));
+
+    return this.toDomain(patient, restrictionRows, undefined);
+  }
+
   async findByNutritionistId(nutritionistId: string): Promise<Patient[]> {
     const rows = await db
       .select()
@@ -45,6 +62,7 @@ export class PgPatientRepository implements IPatientRepository {
   async save(patient: Patient): Promise<Patient> {
     const insertValues: typeof patients.$inferInsert = {
       nutritionistId:      patient.nutritionistId,
+      userId:              patient.userId ?? null,
       name:                patient.name,
       birthDate:           patient.birthDate.toISOString().split('T')[0]!,
       sex:                 patient.sex,
@@ -121,6 +139,7 @@ export class PgPatientRepository implements IPatientRepository {
     return {
       id:             row.id,
       nutritionistId: row.nutritionistId,
+      userId:         row.userId ?? undefined,
       name:           row.name,
       birthDate:      new Date(row.birthDate),
       sex:            row.sex,

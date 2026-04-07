@@ -5,17 +5,113 @@ import {
   UpdatePatientSchema,
   AddConsultationSchema,
 } from '@nutriplan/shared';
+import { RegisterPatientUseCase }   from '@nutriplan/domain';
 import { PgPatientRepository }      from '../../infrastructure/repositories/PgPatientRepository';
-import { PgNutritionistRepository } from '../../infrastructure/repositories/PgUserRepository';
+import { PgNutritionistRepository, PgUserRepository } from '../../infrastructure/repositories/PgUserRepository';
 import { PgConsultationRepository } from '../../infrastructure/repositories/PgConsultationRepository';
 import { PgDietPlanRepository }     from '../../infrastructure/repositories/PgDietPlanRepository';
+import { BcryptPasswordHasher }     from '../../infrastructure/services/BcryptPasswordHasher';
 import { authenticate }             from '../middlewares/authenticate';
+
+// ─── Schemas reutilizáveis ─────────────────────────────────────────────────────
+
+const restrictionSchema = {
+  type: 'object',
+  properties: {
+    type:        { type: 'string', enum: ['allergy', 'intolerance', 'clinical', 'preference'] },
+    description: { type: 'string' },
+  },
+} as const;
+
+const patientSchema = {
+  type: 'object',
+  properties: {
+    id:                  { type: 'string' },
+    nutritionistId:      { type: 'string' },
+    userId:              { type: 'string' },
+    name:                { type: 'string' },
+    birthDate:           { type: 'string' },
+    sex:                 { type: 'string' },
+    heightCm:            { type: 'integer' },
+    activityLevel:       { type: 'string' },
+    restrictions:        { type: 'array', items: restrictionSchema },
+    culturalPreferences: { type: 'string' },
+    routineNotes:        { type: 'string' },
+    dislikedFoods:       { type: 'array', items: { type: 'string' } },
+  },
+} as const;
+
+const consultationSchema = {
+  type: 'object',
+  properties: {
+    id:            { type: 'string' },
+    patientId:     { type: 'string' },
+    nutritionistId:{ type: 'string' },
+    date:          { type: 'string' },
+    weightKg:      { type: 'number' },
+    bodyFatPct:    { type: 'number' },
+    muscleMassKg:  { type: 'number' },
+    notes:         { type: 'string' },
+    createdAt:     { type: 'string' },
+  },
+} as const;
+
+// ─── Body schemas ──────────────────────────────────────────────────────────────
+
+const createPatientBody = {
+  type: 'object',
+  required: ['name', 'birthDate', 'sex', 'heightCm', 'activityLevel'],
+  properties: {
+    name:                { type: 'string', minLength: 2, maxLength: 150 },
+    birthDate:           { type: 'string', description: 'ISO date: YYYY-MM-DD' },
+    sex:                 { type: 'string', enum: ['M', 'F'] },
+    heightCm:            { type: 'integer', minimum: 50, maximum: 250 },
+    activityLevel:       { type: 'string', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'] },
+    restrictions:        { type: 'array', items: restrictionSchema },
+    culturalPreferences: { type: 'string', maxLength: 300 },
+    routineNotes:        { type: 'string', maxLength: 500 },
+    dislikedFoods:       { type: 'array', items: { type: 'string' } },
+    email:               { type: 'string', format: 'email', description: 'Quando fornecido, cria conta de acesso ao app mobile' },
+    password:            { type: 'string', minLength: 8, maxLength: 100, description: 'Obrigatório se email for informado' },
+  },
+} as const;
+
+const updatePatientBody = {
+  type: 'object',
+  properties: {
+    name:                { type: 'string', minLength: 2, maxLength: 150 },
+    birthDate:           { type: 'string', description: 'ISO date: YYYY-MM-DD' },
+    sex:                 { type: 'string', enum: ['M', 'F'] },
+    heightCm:            { type: 'integer', minimum: 50, maximum: 250 },
+    activityLevel:       { type: 'string', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'] },
+    restrictions:        { type: 'array', items: restrictionSchema },
+    culturalPreferences: { type: 'string', maxLength: 300 },
+    routineNotes:        { type: 'string', maxLength: 500 },
+    dislikedFoods:       { type: 'array', items: { type: 'string' } },
+  },
+} as const;
+
+const addConsultationBody = {
+  type: 'object',
+  required: ['weightKg'],
+  properties: {
+    date:          { type: 'string', description: 'ISO datetime (opcional, padrão: agora)' },
+    weightKg:      { type: 'number', minimum: 20, maximum: 300 },
+    bodyFatPct:    { type: 'number', minimum: 1, maximum: 70 },
+    muscleMassKg:  { type: 'number', minimum: 5, maximum: 150 },
+    notes:         { type: 'string', maxLength: 1000 },
+  },
+} as const;
 
 export async function patientRoutes(app: FastifyInstance): Promise<void> {
   const patientRepo      = new PgPatientRepository();
   const nutritionistRepo = new PgNutritionistRepository();
+  const userRepo         = new PgUserRepository();
   const consultationRepo = new PgConsultationRepository();
   const dietPlanRepo     = new PgDietPlanRepository();
+  const passwordHasher   = new BcryptPasswordHasher();
+
+  const registerPatientUseCase = new RegisterPatientUseCase(patientRepo, userRepo, passwordHasher);
 
   // ─── Helper: resolve nutritionistId from JWT userId ───────────────────────
 
@@ -31,9 +127,10 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags:    ['Patients'],
       summary: 'Criar paciente',
+      body:    createPatientBody,
       response: {
-        201: { description: 'Paciente criado',    type: 'object', properties: { data: { type: 'object' } } },
-        400: { description: 'Erro de validação',  type: 'object', properties: { error: { type: 'string' } } },
+        201: { description: 'Paciente criado',    type: 'object', properties: { data: patientSchema } },
+        400: { description: 'Erro de validação',  type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
       },
     },
     preHandler: [authenticate],
@@ -45,18 +142,19 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
 
     const nutritionistId = await getNutritionistId(request.user.sub);
 
-    const patient = await patientRepo.save({
-      id:                  '',
+    const { patient } = await registerPatientUseCase.execute({
       nutritionistId,
       name:                parsed.data.name,
-      birthDate:           new Date(parsed.data.birthDate),
+      birthDate:           parsed.data.birthDate,
       sex:                 parsed.data.sex,
       heightCm:            parsed.data.heightCm,
       activityLevel:       parsed.data.activityLevel,
-      restrictions:        parsed.data.restrictions.map(r => ({ id: '', ...r })),
+      restrictions:        parsed.data.restrictions,
       culturalPreferences: parsed.data.culturalPreferences,
       routineNotes:        parsed.data.routineNotes,
       dislikedFoods:       parsed.data.dislikedFoods,
+      email:               parsed.data.email,
+      password:            parsed.data.password,
     });
 
     return reply.status(201).send({ data: patient });
@@ -69,7 +167,7 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       tags:    ['Patients'],
       summary: 'Listar pacientes do nutricionista',
       response: {
-        200: { description: 'Lista de pacientes', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+        200: { description: 'Lista de pacientes', type: 'object', properties: { data: { type: 'array', items: patientSchema }, meta: { type: 'object', properties: { total: { type: 'integer' } } } } },
       },
     },
     preHandler: [authenticate],
@@ -87,7 +185,7 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Buscar paciente por ID',
       params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
       response: {
-        200: { description: 'Paciente',         type: 'object', properties: { data: { type: 'object' } } },
+        200: { description: 'Paciente',         type: 'object', properties: { data: patientSchema } },
         404: { description: 'Não encontrado',   type: 'object', properties: { error: { type: 'string' } } },
         403: { description: 'Sem permissão',    type: 'object', properties: { error: { type: 'string' } } },
       },
@@ -111,9 +209,10 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       tags:    ['Patients'],
       summary: 'Atualizar paciente',
       params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      body:    updatePatientBody,
       response: {
-        200: { description: 'Paciente atualizado', type: 'object', properties: { data: { type: 'object' } } },
-        400: { description: 'Erro de validação',   type: 'object', properties: { error: { type: 'string' } } },
+        200: { description: 'Paciente atualizado', type: 'object', properties: { data: patientSchema } },
+        400: { description: 'Erro de validação',   type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
       },
     },
     preHandler: [authenticate],
@@ -153,9 +252,10 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       tags:    ['Consultations'],
       summary: 'Adicionar consulta ao paciente',
       params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+      body:    addConsultationBody,
       response: {
-        201: { description: 'Consulta criada',   type: 'object', properties: { data: { type: 'object' } } },
-        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' } } },
+        201: { description: 'Consulta criada',   type: 'object', properties: { data: consultationSchema } },
+        400: { description: 'Erro de validação', type: 'object', properties: { error: { type: 'string' }, details: { type: 'object' } } },
       },
     },
     preHandler: [authenticate],
@@ -191,7 +291,7 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Listar consultas do paciente',
       params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
       response: {
-        200: { description: 'Lista de consultas', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+        200: { description: 'Lista de consultas', type: 'object', properties: { data: { type: 'array', items: consultationSchema }, meta: { type: 'object', properties: { total: { type: 'integer' } } } } },
       },
     },
     preHandler: [authenticate],
@@ -216,7 +316,7 @@ export async function patientRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Listar planos alimentares do paciente',
       params:  { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
       response: {
-        200: { description: 'Lista de planos', type: 'object', properties: { data: { type: 'array', items: { type: 'object' } }, meta: { type: 'object' } } },
+        200: { description: 'Lista de planos', type: 'object', properties: { data: { type: 'array', items: { type: 'object', additionalProperties: true } }, meta: { type: 'object', properties: { total: { type: 'integer' } } } } },
       },
     },
     preHandler: [authenticate],

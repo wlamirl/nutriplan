@@ -6,6 +6,7 @@ import { DietPlan } from '../entities/DietPlan';
 
 export interface IPatientRepository {
   findById(id: string): Promise<Patient | null>;
+  findByUserId(userId: string): Promise<Patient | null>;
   findByNutritionistId(nutritionistId: string): Promise<Patient[]>;
   save(patient: Patient): Promise<Patient>;
   update(id: string, data: Partial<Patient>): Promise<Patient>;
